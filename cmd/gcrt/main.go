@@ -102,7 +102,8 @@ func check(paths config.Paths, file *session.File, problems session.Problems) in
 }
 
 func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems, client *tmux.Client) int {
-	p := tea.NewProgram(tui.New(cfg, file, paths, problems, client), tea.WithAltScreen())
+	p := tea.NewProgram(tui.New(cfg, file, paths, problems, client),
+		tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "gcrt:", err)
 		return 1

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -55,18 +56,23 @@ func (m *Model) viewHeader() string {
 		left += styleDim.Render("filter: ") + styleText.Render("/"+m.filter)
 	}
 	right := styleDim.Render(joinCaps(m.Capabilities()) + " ")
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	scroll := ""
+	if len(m.rows) > m.bodyHeight() {
+		end := m.offset + m.bodyHeight()
+		if end > len(m.rows) {
+			end = len(m.rows)
+		}
+		scroll = styleDim.Render(fmt.Sprintf(" %d–%d/%d ", m.offset+1, end, len(m.rows)))
+	}
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(scroll) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
 	}
-	return left + strings.Repeat(" ", gap) + right
+	return left + strings.Repeat(" ", gap) + scroll + right
 }
 
 func (m *Model) viewBody() string {
-	height := m.height - 2
-	if height < 3 {
-		height = 3
-	}
+	height := m.bodyHeight()
 	if m.width < 70 {
 		return pad(m.viewTree(m.width, height), m.width, height)
 	}
@@ -79,9 +85,13 @@ func (m *Model) viewBody() string {
 }
 
 func (m *Model) viewTree(width, height int) string {
-	lines := make([]string, 0, len(m.rows))
-	for i, row := range m.rows {
-		line := m.renderRow(row)
+	lines := make([]string, 0, height)
+	end := m.offset + height
+	if end > len(m.rows) {
+		end = len(m.rows)
+	}
+	for i := m.offset; i < end; i++ {
+		line := m.renderRow(m.rows[i])
 		if i == m.cursor {
 			line = styleCursor.Width(width).Render(line)
 		}
@@ -263,6 +273,7 @@ func (m *Model) viewHelp() string {
 	binds := [][2]string{
 		{"↑ ↓ / j k", "move"},
 		{"← →", "collapse / expand group"},
+		{"pgup/pgdn", "page through a long tree"},
 		{"enter", "connect (attach-or-create)"},
 		{"d", "detach or kill the selected session"},
 		{"/", "filter over name, host, group, tags"},
@@ -270,6 +281,8 @@ func (m *Model) viewHelp() string {
 		{"r", "refresh tmux state"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
+		{"mouse", "click to select, click again to connect"},
+		{"wheel", "scroll the tree"},
 	}
 	lines := []string{styleTitle.Render("ghosttycrt — help"), ""}
 	for _, b := range binds {

@@ -23,6 +23,7 @@ type Model struct {
 	root      *session.Node
 	rows      []session.Row
 	cursor    int
+	offset    int
 	collapsed map[string]bool
 
 	filter    string
@@ -90,6 +91,58 @@ func (m *Model) rebuild() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+	m.clampScroll()
+}
+
+// bodyHeight is the number of rows the tree can show: everything between the
+// header and the footer.
+func (m *Model) bodyHeight() int {
+	h := m.height - 2
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
+func (m *Model) maxOffset() int {
+	extra := len(m.rows) - m.bodyHeight()
+	if extra < 0 {
+		return 0
+	}
+	return extra
+}
+
+// clampScroll keeps the offset legal and the cursor on screen.
+func (m *Model) clampScroll() {
+	if m.offset > m.maxOffset() {
+		m.offset = m.maxOffset()
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if bottom := m.offset + m.bodyHeight(); m.cursor >= bottom {
+		m.offset = m.cursor - m.bodyHeight() + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+func (m *Model) setCursor(i int) {
+	m.cursor = i
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor >= len(m.rows) {
+		m.cursor = len(m.rows) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	m.clampScroll()
 }
 
 // cursorToFirstSession puts the highlight on a connectable row rather than a
@@ -97,7 +150,7 @@ func (m *Model) rebuild() {
 func (m *Model) cursorToFirstSession() {
 	for i, r := range m.rows {
 		if r.Node.Kind == session.KindSession {
-			m.cursor = i
+			m.setCursor(i)
 			return
 		}
 	}
@@ -162,6 +215,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh()
 		return m, nil
+
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 
 	case tea.KeyMsg:
 		if m.confirm != nil {
@@ -279,19 +335,17 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursorToFirstSession()
 		}
 	case "j", "down":
-		if m.cursor < len(m.rows)-1 {
-			m.cursor++
-		}
+		m.setCursor(m.cursor + 1)
 	case "k", "up":
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		m.setCursor(m.cursor - 1)
 	case "g":
-		m.cursor = 0
+		m.setCursor(0)
 	case "G":
-		if len(m.rows) > 0 {
-			m.cursor = len(m.rows) - 1
-		}
+		m.setCursor(len(m.rows) - 1)
+	case "ctrl+f", "pgdown":
+		m.setCursor(m.cursor + m.bodyHeight())
+	case "ctrl+b", "pgup":
+		m.setCursor(m.cursor - m.bodyHeight())
 	case "ctrl+r", "r":
 		m.refresh()
 	case "right", "l":
@@ -329,10 +383,54 @@ func (m *Model) collapse() {
 	}
 	for i := m.cursor - 1; i >= 0; i-- {
 		if m.rows[i].Node.Kind == session.KindGroup && m.rows[i].Depth < row.Depth {
-			m.cursor = i
+			m.setCursor(i)
 			return
 		}
 	}
+}
+
+// updateMouse makes the tree clickable: a click selects, a click on the already
+// selected session connects (so a double-click connects), a click on a group
+// folds it, and the wheel moves the cursor.
+func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.confirm != nil || m.menu != nil || m.help || m.filtering {
+		return m, nil
+	}
+
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.setCursor(m.cursor - 3)
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		m.setCursor(m.cursor + 3)
+		return m, nil
+	}
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+
+	// Row 0 of the screen is the header, so the tree starts at Y == 1.
+	index := m.offset + (msg.Y - 1)
+	if index < 0 || index >= len(m.rows) {
+		return m, nil
+	}
+	row := m.rows[index]
+	wasSelected := index == m.cursor
+	m.setCursor(index)
+
+	if row.Node.Kind == session.KindGroup {
+		if m.collapsed[row.Node.Path] {
+			delete(m.collapsed, row.Node.Path)
+		} else {
+			m.collapsed[row.Node.Path] = true
+		}
+		m.rebuild()
+		return m, nil
+	}
+	if wasSelected {
+		return m, m.beginAttach(row.Node.Session)
+	}
+	return m, nil
 }
 
 // beginAttach builds the argv, ensures the tmux session exists, and hands back

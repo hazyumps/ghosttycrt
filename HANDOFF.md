@@ -16,6 +16,7 @@ like SecureCRT.
 
 | Area | Path |
 |---|---|
+| header menu bar (clickable Help / Filter / Refresh / Quit), scrollable help | `internal/tui/view.go` |
 | SecureCRT `.ini` parser, field mapping, deterministic ids, slug dedup | `internal/importers/securecrt/` |
 | `gcrt import securecrt [--from DIR] [--write]`, dry run by default | `cmd/gcrt/import.go` |
 | TOML emitter for `sessions.toml` (round-trip tested) | `internal/session/write.go` |
@@ -133,6 +134,18 @@ M3 is what makes it feel like SecureCRT; M2 is what makes console work possible.
     '#{pane_id}'` (which does support it), or from `list-panes`.
 11. **`@gcrt_slug` pane options survive `join-pane` and `break-pane`.** Use them
     for identity; `pane_title` is overwritten by whatever the pane runs.
+12. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
+    or fast typing) become **one** `KeyMsg` whose `String()` is `"jj"`, matching
+    no single-key case — so both are dropped, and pasting into the filter did
+    nothing. `Update` now detects a multi-rune `KeyMsg` and replays each rune.
+    Any test that sends batched input hits this too.
+13. **A composed line wider than the pane wraps and wrecks the frame.** The
+    footer's key list alone is longer than 80 columns. `fitLine` drops the
+    capability strip, then the scroll position, then clips. Same class of bug as
+    the oversized modal: `Place` and `Width` never shrink what you hand them.
+14. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
+    20-column field pushes the following text out of the box. Clip before
+    padding.
 
 ## Environment — verified on this Mac, 2026-09-16
 

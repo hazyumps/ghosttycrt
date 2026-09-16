@@ -39,6 +39,7 @@ type Model struct {
 	panes     map[string]tmux.Pane
 
 	help    bool
+	helpTop int
 	menu    *menuState
 	confirm *confirmState
 
@@ -284,6 +285,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMouse(msg)
 
 	case tea.KeyMsg:
+		// Bubbletea delivers several keystrokes as one message when they arrive
+		// in a single read — a paste, or fast typing. String() would then be
+		// "jj" and match no case, so replay them one at a time.
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 {
+			var last tea.Cmd
+			for _, r := range msg.Runes {
+				updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+				m = updated.(*Model)
+				if cmd != nil {
+					last = cmd
+				}
+			}
+			return m, last
+		}
+
 		if m.confirm != nil {
 			return m.updateConfirm(msg)
 		}
@@ -294,6 +310,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "?", "esc", "q", "enter":
 				m.help = false
+			case "j", "down":
+				m.scrollHelp(1)
+			case "k", "up":
+				m.scrollHelp(-1)
+			case "pgdown", "ctrl+f", " ":
+				m.scrollHelp(m.helpWindow())
+			case "pgup", "ctrl+b":
+				m.scrollHelp(-m.helpWindow())
+			case "g":
+				m.helpTop = 0
+			case "G":
+				m.scrollHelp(len(m.helpContent()))
 			}
 			return m, nil
 		}
@@ -379,18 +407,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "q":
-		if m.workspace {
-			return m, m.detachWorkspace()
-		}
-		if m.cfg.General.ConfirmOnQuit && m.running() > 0 {
-			n := m.running()
-			m.confirm = &confirmState{
-				prompt: fmt.Sprintf("%d session(s) still running. Quit gcrt? They keep running in tmux.", n),
-				yes:    func() tea.Cmd { return tea.Quit },
-			}
-			return m, nil
-		}
-		return m, tea.Quit
+		return m, m.requestQuit()
 	case "?":
 		m.help = true
 	case "/":
@@ -462,7 +479,28 @@ func (m *Model) collapse() {
 // updateMouse makes the tree clickable: a click on a session opens it, a click
 // on a group header folds it, and the wheel moves the cursor.
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.confirm != nil || m.menu != nil || m.help || m.filtering {
+	if m.confirm != nil || m.menu != nil || m.filtering {
+		return m, nil
+	}
+
+	if m.help {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.scrollHelp(-3)
+		case tea.MouseButtonWheelDown:
+			m.scrollHelp(3)
+		}
+		return m, nil
+	}
+
+	// The header row is the menu bar.
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft && msg.Y == 0 {
+		_, items := m.renderBar()
+		for _, item := range items {
+			if msg.X >= item.start && msg.X < item.end {
+				return m, item.run()
+			}
+		}
 		return m, nil
 	}
 
@@ -577,6 +615,24 @@ func (m *Model) detachWorkspace() tea.Cmd {
 	}
 	m.status = "detached — run gcrt again to come back to it"
 	return nil
+}
+
+// requestQuit is what both `q` and the menu bar's Quit item do. In workspace
+// mode it detaches instead, because quitting would kill the panes that are the
+// sessions.
+func (m *Model) requestQuit() tea.Cmd {
+	if m.workspace {
+		return m.detachWorkspace()
+	}
+	if m.cfg.General.ConfirmOnQuit && m.running() > 0 {
+		n := m.running()
+		m.confirm = &confirmState{
+			prompt: fmt.Sprintf("%d session(s) still running. Quit gcrt? They keep running in tmux.", n),
+			yes:    func() tea.Cmd { return tea.Quit },
+		}
+		return nil
+	}
+	return tea.Quit
 }
 
 func (m *Model) openSessionMenu() {

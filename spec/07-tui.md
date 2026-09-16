@@ -6,8 +6,7 @@ common path.
 ## Layout
 
 ```
-┌ ghosttycrt ─────────────────────────────────────────────────────────────┐
-│ filter: /core█                                                           │
+┌ ghosttycrt   Help  Filter  Refresh  Detach          1–20/148  tmux ✓  vault ✓┐
 ├──────────────────┬──────────────────────────────────────────────────────┤
 │ ▼ network        │  console-core-sw-01                                  │
 │   ▼ switches     │  ────────────────────────────────────────────────    │
@@ -24,14 +23,30 @@ common path.
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Left:** the session tree. Groups collapse/expand, pinned entries float to
-  the top of their group, `●/○/·/✗` status from `06-logging.md`.
+- **Left:** the session tree. Groups collapse/expand, pinned entries float to the
+  top of their group, `●/○/·/✗` status from `06-logging.md`.
 - **Right:** details for the highlighted session — everything you would otherwise
   open an editor to check, including which credential reference it uses (the
   reference, never the value).
 - **Bottom:** context keys and a capability strip showing whether `tmux`,
   `picocom`, and the configured vault are reachable right now, so a broken
   dependency is visible before you press enter.
+- **Top:** a **menu bar** — `Help`, `Filter`, `Refresh`, and `Quit` (`Detach` in
+  workspace mode). Every item is clickable, and each is the same action as its
+  key. In a narrow pane the labels collapse to the key itself (`?`, `/`, `r`,
+  `q`), which doubles as a legend.
+
+### The menu bar
+
+One row, drawn by `renderBar`, which also reports where each item landed. The
+click handler hit-tests against exactly what was drawn, so the layout and the
+hitboxes cannot drift apart — a click on the bar must never fall through and
+open whatever session sits underneath it.
+
+At 80 columns the bar and the capability strip together exceed the pane, so the
+header degrades instead of overflowing: the capability strip is dropped first,
+then the scroll position, then the left side is clipped. A composed line wider
+than the pane wraps and wrecks the whole frame, which is how this was found.
 
 Narrow terminals collapse to a single column: tree, with details shown inline
 under the highlighted row.
@@ -44,7 +59,7 @@ under the highlighted row.
 | Filter | `/` | fuzzy over name, host, group, tags |
 | Form | `n` / `e` | create/edit a session |
 | Log | `l` / `L` | suspend to `less -R +F` over the session log |
-| Help | `?` | full keybind list |
+| Help | `?` or the menu bar | full keybind, mouse and command list; scrolls with `j`/`k` or the wheel |
 | Import | `i` | propose `~/.ssh/config` and SecureCRT XML imports, show a diff |
 | Doctor | `D` | dependency and config checks: tmux, ssh, picocom, providers, paths |
 

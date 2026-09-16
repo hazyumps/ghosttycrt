@@ -11,8 +11,10 @@ replacement for SSH.** `enter` creates or reattaches a tmux session and hands
 you the terminal; the session outlives `gcrt` and Ghostty. With
 `display_mode = "workspace"` the tree stays pinned on the left and every session
 you open tiles beside it, several live at once — click a pane to focus it,
-`Ctrl-b t` to get back to the tree, `Ctrl-b d` to detach the lot. Serial, CRUD,
-and logging are next ([`spec/09-milestones.md`](spec/09-milestones.md)).
+`Ctrl-b t` to get back to the tree, `Ctrl-b d` to detach the lot. The top row is
+a clickable menu bar; `?` or the `Help` item opens the full key and command
+list. Serial, CRUD, and logging are next
+([`spec/09-milestones.md`](spec/09-milestones.md)).
 
 ## Build and run
 

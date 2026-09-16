@@ -1,0 +1,45 @@
+# Example config for ghosttycrt. Every key is optional; the built-in defaults
+# are these values. See spec/03-data-model.md.
+
+[general]
+default_transport = "ssh"
+display_mode      = "inline"
+confirm_on_quit   = true
+secret_scrub_logs = true
+
+[general.theme]
+name = "auto"
+
+[transports.ssh]
+binary     = "ssh"
+extra_args = ["-o", "ServerAliveInterval=30"]
+
+[transports.serial]
+backend      = "picocom"
+default_baud = 9600
+
+[transports.telnet]
+binary = "telnet"
+
+[logging]
+enabled_by_default = false
+directory          = ""
+timestamp          = true
+rotate_mb          = 50
+
+[credentials]
+default_provider = "infisical"
+
+[credentials.providers.infisical]
+command = ["infisical", "secrets", "get", "{ref}", "--plain", "--env=prod"]
+
+[credentials.providers.vaultwarden]
+command        = ["rbw", "get", "{ref}"]
+unlock_command = ["rbw", "unlock"]
+
+[import.ssh_config]
+enabled = true
+path    = "~/.ssh/config"
+
+[display.ghostty]
+cli_path = "/Applications/Ghostty.app/Contents/MacOS/ghostty"

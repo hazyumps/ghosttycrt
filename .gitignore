@@ -1,0 +1,13 @@
+# build output
+/gcrt
+/dist/
+*.test
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# never commit local runtime state or logs
+*.log

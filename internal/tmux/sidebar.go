@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -16,19 +17,95 @@ import (
 // prefix key long before a pane sees it, so the inner server is driven entirely
 // by clicks on its tab bar and by gcrt's own commands.
 
-// contentScript is what the content pane runs: attach to the tab server's
-// session when it exists, and say so plainly when it does not. It retries
-// because gcrt creates that session only once a connection is opened, and
-// because killing the last connection takes the session with it.
-func (c *Client) contentScript() string {
-	return fmt.Sprintf(`while :; do
-  if %[1]s -L %[2]s has-session -t %[3]s 2>/dev/null; then
-    %[1]s -L %[2]s attach -t %[3]s
+// idleArt is the wordmark shown when no connection is open. Kept short enough
+// to fit the content pane at a normal tree width.
+var idleArt = []string{
+	" ██████╗  ██████╗ ██████╗ ████████╗",
+	"██╔════╝ ██╔════╝ ██╔══██╗╚══██╔══╝",
+	"██║  ███╗██║      ██████╔╝   ██║",
+	"██║   ██║██║      ██╔══██╗   ██║",
+	"╚██████╔╝╚██████╗ ██║  ██║   ██║",
+	" ╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝",
+}
+
+// idleBlock is the empty state, centred within its own width so the shell only
+// has to work out one offset.
+func idleBlock() ([]string, int) {
+	lines := append([]string{}, idleArt...)
+	lines = append(lines,
+		"",
+		"no connections open yet",
+		"",
+		"choose one in the tree, then press enter",
+	)
+
+	width := 0
+	for _, l := range lines {
+		if n := len([]rune(l)); n > width {
+			width = n
+		}
+	}
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, strings.Repeat(" ", (width-len([]rune(l)))/2)+l)
+	}
+	return out, width
+}
+
+// contentTemplate is the content pane's program. @WORD@ placeholders stand in
+// for values, rather than Printf, so the shell's own % signs need no escaping.
+//
+// The idle screen redraws on a timer rather than once. It is drawn into a pane
+// that is still settling: the split happens before the layout pins the tree to
+// its width, so a single draw can land at the wrong size and stay wrong. Since
+// the draw clears first, repeating it costs nothing and cannot pile up.
+const contentTemplate = `draw() {
+  sz=$(stty size 2>/dev/null | tr -d '\r')
+  [ -n "$sz" ] || sz="24 80"
+  rows=${sz%% *}
+  cols=${sz##* }
+  printf '\033[2J\033[H'
+  if [ "$cols" -ge @W@ ]; then
+    left=$(( (cols - @W@) / 2 ))
+    [ "$left" -lt 0 ] && left=0
+    top=$(( (rows - @N@) / 2 ))
+    [ "$top" -lt 0 ] && top=0
+    i=0
+    while [ "$i" -lt "$top" ]; do printf '\n'; i=$((i+1)); done
+    while IFS= read -r line; do
+      printf '%*s%s\n' "$left" '' "$line"
+    done <<'GCRT_ART'
+@BLOCK@
+GCRT_ART
   else
-    printf '\r\n  no connections yet — pick one in the tree\r\n'
-    sleep 1
+    printf '\n  no connections open\n\n  pick one in the tree\n'
   fi
-done`, c.Bin, c.tabSocket(), TabsSession)
+}
+
+while :; do
+  if @BIN@ -L @SOCK@ has-session -t @SESS@ 2>/dev/null; then
+    @BIN@ -L @SOCK@ attach -t @SESS@
+    sleep 0.3
+  else
+    draw
+    sleep 0.5
+  fi
+done
+`
+
+// contentScript is what the content pane runs: an empty state until a
+// connection opens, then attach to the tab server's session. It retries
+// because the tab server only exists while something is open.
+func (c *Client) contentScript() string {
+	block, width := idleBlock()
+	return strings.NewReplacer(
+		"@BIN@", c.Bin,
+		"@SOCK@", c.tabSocket(),
+		"@SESS@", TabsSession,
+		"@BLOCK@", strings.Join(block, "\n"),
+		"@W@", strconv.Itoa(width),
+		"@N@", strconv.Itoa(len(block)),
+	).Replace(contentTemplate)
 }
 
 func (c *Client) tabSocket() string {

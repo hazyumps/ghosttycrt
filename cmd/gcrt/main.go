@@ -10,6 +10,7 @@ import (
 
 	"github.com/hazyumps/ghosttycrt/internal/config"
 	"github.com/hazyumps/ghosttycrt/internal/session"
+	"github.com/hazyumps/ghosttycrt/internal/tmux"
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
@@ -72,7 +73,13 @@ func run() int {
 	case "check":
 		return check(paths, file, problems)
 	case "tui":
-		return browse(cfg, paths, file, problems)
+		client := tmux.New(tmux.Socket)
+		if !client.Available() {
+			fmt.Fprintln(os.Stderr, "gcrt: tmux is required and was not found on PATH.")
+			fmt.Fprintln(os.Stderr, "      install it with: "+tmux.InstallHint())
+			return 1
+		}
+		return browse(cfg, paths, file, problems, client)
 	default:
 		fmt.Fprintf(os.Stderr, "gcrt: unknown command %q\n", cmd)
 		fs.Usage()
@@ -94,8 +101,8 @@ func check(paths config.Paths, file *session.File, problems session.Problems) in
 	return 0
 }
 
-func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems) int {
-	p := tea.NewProgram(tui.New(cfg, file, paths, problems), tea.WithAltScreen())
+func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems, client *tmux.Client) int {
+	p := tea.NewProgram(tui.New(cfg, file, paths, problems, client), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "gcrt:", err)
 		return 1

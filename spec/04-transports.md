@@ -62,8 +62,8 @@ ssh [-p <port>] [-i <identity>] [-J <jump>] [-o SendEnv=…] <user>@<host>
 
 ### serial
 
-Backend is `picocom` (preferred) or `screen` (fallback; it is what is installed
-on this Mac today).
+Backend is `picocom` (preferred) or `screen` (fallback; both are installed on
+this Mac as of 2026-09-16).
 
 ```
 picocom -b <baud> [-d <databits>] [-y <parity>] [-f <flow>] <device>

@@ -1,6 +1,8 @@
 package tui_test
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -8,6 +10,7 @@ import (
 
 	"github.com/hazyumps/ghosttycrt/internal/config"
 	"github.com/hazyumps/ghosttycrt/internal/session"
+	"github.com/hazyumps/ghosttycrt/internal/tmux"
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
@@ -29,15 +32,34 @@ func sample() *session.File {
 	}}
 }
 
-func sized(t *testing.T, file *session.File, w, h int) tui.Model {
+func unitSocket() string { return fmt.Sprintf("gcrt-unit-%d", os.Getpid()) }
+
+func newModel(t *testing.T, file *session.File, w, h int) *tui.Model {
 	t.Helper()
-	m := tui.New(config.Default(), file, config.DefaultPaths(), session.Problems{})
+	m := tui.New(config.Default(), file, config.DefaultPaths(), session.Problems{}, tmux.New(unitSocket()))
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	return updated.(tui.Model)
+	return updated.(*tui.Model)
+}
+
+func press(t *testing.T, m *tui.Model, keys string) (*tui.Model, tea.Cmd) {
+	t.Helper()
+	var cmd tea.Cmd
+	for _, r := range keys {
+		var updated tea.Model
+		updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(*tui.Model)
+	}
+	return m, cmd
+}
+
+func pressKey(t *testing.T, m *tui.Model, k tea.KeyType) *tui.Model {
+	t.Helper()
+	updated, _ := m.Update(tea.KeyMsg{Type: k})
+	return updated.(*tui.Model)
 }
 
 func TestViewRendersTreeAndDetails(t *testing.T) {
-	m := sized(t, sample(), 100, 30)
+	m := newModel(t, sample(), 100, 30)
 	out := m.View()
 
 	for _, want := range []string{"network", "switches", "core-sw-01", "servers", "k3s-01"} {
@@ -45,7 +67,7 @@ func TestViewRendersTreeAndDetails(t *testing.T) {
 			t.Errorf("view is missing %q", want)
 		}
 	}
-	for _, want := range []string{"transport", "credential", "infisical:CORE-SW-01-PASS"} {
+	for _, want := range []string{"transport", "credential", "infisical:CORE-SW-01-PASS", "state"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("details pane is missing %q", want)
 		}
@@ -53,7 +75,7 @@ func TestViewRendersTreeAndDetails(t *testing.T) {
 }
 
 func TestViewNarrowCollapsesToTree(t *testing.T) {
-	m := sized(t, sample(), 50, 20)
+	m := newModel(t, sample(), 50, 20)
 	out := m.View()
 	if strings.Contains(out, "credential") {
 		t.Error("narrow view should not render the details pane")
@@ -64,11 +86,9 @@ func TestViewNarrowCollapsesToTree(t *testing.T) {
 }
 
 func TestFilterNarrowsTheTree(t *testing.T) {
-	m := sized(t, sample(), 100, 30)
-	m = key(t, m, "/")
-	for _, r := range "k3s" {
-		m = key(t, m, string(r))
-	}
+	m := newModel(t, sample(), 100, 30)
+	m, _ = press(t, m, "/k3s")
+
 	out := m.View()
 	if !strings.Contains(out, "k3s-01") {
 		t.Error("filtered view should keep k3s-01")
@@ -79,19 +99,51 @@ func TestFilterNarrowsTheTree(t *testing.T) {
 }
 
 func TestEmptyState(t *testing.T) {
-	m := sized(t, &session.File{}, 100, 30)
-	out := m.View()
-	if !strings.Contains(out, "No sessions yet") {
+	m := newModel(t, &session.File{}, 100, 30)
+	if out := m.View(); !strings.Contains(out, "No sessions yet") {
 		t.Errorf("empty state not shown:\n%s", out)
 	}
 }
 
-func key(t *testing.T, m tui.Model, s string) tui.Model {
-	t.Helper()
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-	if s == "/" {
-		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}
+func TestCursorStartsOnASession(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	if got := m.SelectedName(); got != "core-sw-01" {
+		t.Fatalf("initial selection = %q, want core-sw-01", got)
 	}
-	updated, _ := m.Update(msg)
-	return updated.(tui.Model)
+}
+
+// A group row is a header, not a target: d must not offer to kill it.
+func TestMenuIsNotOfferedForAGroupRow(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	m = pressKey(t, m, tea.KeyUp) // onto the "network" group row
+
+	m, _ = press(t, m, "d")
+	if out := m.View(); strings.Contains(out, "choose an action") {
+		t.Errorf("menu opened for a group row:\n%s", out)
+	}
+}
+
+func TestMenuExplainsWhenNothingIsRunning(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	m, _ = press(t, m, "d")
+
+	out := m.View()
+	if strings.Contains(out, "choose an action") {
+		t.Error("menu should not open for a session that is not running")
+	}
+	if !strings.Contains(out, "not running") {
+		t.Errorf("expected an explanation in the footer:\n%s", out)
+	}
+}
+
+func TestTransportNotImplementedIsVisible(t *testing.T) {
+	file := &session.File{Session: []session.Session{{
+		ID: "1", Name: "console", Slug: "console", Transport: session.TransportSerial,
+		Serial: &session.SerialConfig{Device: "/dev/tty.usbserial-1420", Baud: 9600},
+	}}}
+	m := newModel(t, file, 100, 30)
+	out := m.View()
+	if !strings.Contains(out, "M2") {
+		t.Errorf("serial session should say when it lands:\n%s", out)
+	}
 }

@@ -6,10 +6,10 @@ session tree, and logging in one TUI, hosted on Ghostty.
 Replaces SecureCRT for the parts that actually get used daily, and stays out of
 the terminal-emulator business because Ghostty already does that better.
 
-**Status:** M0 complete — the skeleton TUI browses a hand-written
-`sessions.toml` as a tree with groups, collapse, fuzzy filter, and live
-validation. No connection capability yet. Next is M1 (SSH create-or-attach) in
-[`spec/09-milestones.md`](spec/09-milestones.md).
+**Status:** M1 complete — **this is already a SecureCRT replacement for SSH.**
+`enter` creates or reattaches a tmux session and hands you the terminal;
+`Ctrl-b d` brings you back; the session outlives `gcrt` and Ghostty. Serial,
+CRUD, and logging are next ([`spec/09-milestones.md`](spec/09-milestones.md)).
 
 ## Build and run
 

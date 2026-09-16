@@ -16,16 +16,19 @@ Done when: `gcrt` shows a hand-written `sessions.toml` as a browsable tree.
 
 ## M1 — connect (a weekend) ← *first useful version*
 
-- [ ] `tmux` detection + friendly install message
-- [ ] `transport` interface, ssh implementation (`04-transports.md`)
-- [ ] create-or-attach, `tea.ExecProcess`, detach returns to tree
-- [ ] status glyphs read real tmux state (`tmux list-sessions`)
-- [ ] `enter` / `d` (detach) / `q` with confirmation
-- [ ] capability strip: tmux, ssh
+- [x] `tmux` detection + friendly install message
+- [x] `transport` interface, ssh implementation (`04-transports.md`)
+- [x] create-or-attach, `tea.ExecProcess`, detach returns to tree
+- [x] status glyphs read real tmux state (`tmux list-sessions`)
+- [x] `enter` / `d` (detach) / `q` with confirmation
+- [x] capability strip: tmux, ssh
 
 Done when: `enter` on an SSH host drops you in, `Ctrl-b d` brings you back, and
 the session is still there after quitting Ghostty. **This is already a
 SecureCRT replacement for SSH.**
+
+**Landed 2026-09-16.** `d`'s "kill and remove from the tree" option is deferred
+to M2, which is where atomic `sessions.toml` writes live.
 
 ## M2 — serial + session CRUD (a few days)
 

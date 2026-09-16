@@ -106,14 +106,38 @@ pseudoterminal only through tmux (`capture-pane`) when the log viewer asks.
 
 | Mode | Platform | Mechanism | Notes |
 |---|---|---|---|
-| `inline` | macOS + Linux | `tea.ExecProcess` → `tmux attach` | **default**; zero Ghostty coupling |
+| `inline` | macOS + Linux | `tea.ExecProcess` → `tmux attach` | default; zero Ghostty coupling |
+| `workspace` | macOS + Linux | tree and sessions as panes of one tmux session | several sessions visible at once, tree pinned left |
 | `ghostty-tab` | macOS only | AppleScript `new tab in front window` | keeps the tree visible in its own tab; requires Automation permission (TCC) |
 | `ghostty-window` | macOS + Linux | spawn `ghostty` with the attach as its command | best-effort; verify the exact flag per platform at M5 |
 
-`inline` is the contract. The other two are conveniences and are allowed to be
+`inline` is the contract. The others are conveniences and allowed to be
 absent — if AppleScript is disabled (`macos-applescript = false`) or the
 platform is Linux, `gcrt` silently falls back to `inline`. No feature may
 require a display mode other than `inline`.
+
+### `workspace`
+
+`gcrt` starts itself inside a tmux session of its own (`gscrt/workspace`) on the
+private `gcrt` socket, then runs its TUI in pane 0. `enter` ensures a pane for
+the session — created as a background window, then `join-pane`d in — and focuses
+it, so the tree stays visible on the left and sessions tile to its right
+(`main-vertical`, tree pinned at `workspace_tree_width`). Hiding a session
+`break-pane`s it back into a background window: still running, off screen. Every
+pane is tagged with `@gcrt_slug`, which is how the tree maps panes back to
+sessions.
+
+Consequences worth knowing:
+
+- `Ctrl-b d` detaches the whole workspace; `q` does the same, because quitting
+  would kill the panes that *are* the sessions. Shutting the workspace down is a
+  confirmed action in the `d` menu.
+- A crashed connection leaves a dead pane showing its exit status
+  (`remain-on-exit`), rather than vanishing.
+- `mouse on` gives click-to-focus panes and draggable borders, and costs
+  drag-to-select (use Shift-drag).
+- A detached workspace's panes persist, including the tree process, so
+  re-running `gcrt` reattaches rather than rebuilding.
 
 The macOS tab form, verified against the 1.3 AppleScript dictionary:
 

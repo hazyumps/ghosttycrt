@@ -19,11 +19,12 @@ type Config struct {
 }
 
 type General struct {
-	DefaultTransport string `toml:"default_transport"`
-	DisplayMode      string `toml:"display_mode"`
-	ConfirmOnQuit    bool   `toml:"confirm_on_quit"`
-	SecretScrubLogs  bool   `toml:"secret_scrub_logs"`
-	Theme            Theme  `toml:"theme"`
+	DefaultTransport   string `toml:"default_transport"`
+	DisplayMode        string `toml:"display_mode"`
+	ConfirmOnQuit      bool   `toml:"confirm_on_quit"`
+	SecretScrubLogs    bool   `toml:"secret_scrub_logs"`
+	WorkspaceTreeWidth int    `toml:"workspace_tree_width"`
+	Theme              Theme  `toml:"theme"`
 }
 
 type Theme struct {
@@ -90,18 +91,23 @@ const (
 	DisplayInline        = "inline"
 	DisplayGhosttyTab    = "ghostty-tab"
 	DisplayGhosttyWindow = "ghostty-window"
+
+	// DisplayWorkspace hosts the tree and every connection as panes of one
+	// tmux session, so several sessions are live on screen at once.
+	DisplayWorkspace = "workspace"
 )
 
-var validDisplayModes = []string{DisplayInline, DisplayGhosttyTab, DisplayGhosttyWindow}
+var validDisplayModes = []string{DisplayInline, DisplayGhosttyTab, DisplayGhosttyWindow, DisplayWorkspace}
 
 func Default() *Config {
 	return &Config{
 		General: General{
-			DefaultTransport: "ssh",
-			DisplayMode:      DisplayInline,
-			ConfirmOnQuit:    true,
-			SecretScrubLogs:  true,
-			Theme:            Theme{Name: "auto"},
+			DefaultTransport:   "ssh",
+			DisplayMode:        DisplayInline,
+			ConfirmOnQuit:      true,
+			SecretScrubLogs:    true,
+			WorkspaceTreeWidth: 34,
+			Theme:              Theme{Name: "auto"},
 		},
 		Transports: Transports{
 			SSH:    SSHTransport{Binary: "ssh"},
@@ -174,6 +180,10 @@ func (c *Config) Validate() []error {
 	}
 	if c.Logging.RotateMB < 0 {
 		errs = append(errs, fmt.Errorf("logging.rotate_mb must not be negative"))
+	}
+	if c.General.WorkspaceTreeWidth < 20 || c.General.WorkspaceTreeWidth > 200 {
+		errs = append(errs, fmt.Errorf("general.workspace_tree_width %d must be between 20 and 200",
+			c.General.WorkspaceTreeWidth))
 	}
 	return errs
 }

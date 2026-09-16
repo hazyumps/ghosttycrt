@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,7 +16,7 @@ import (
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
-const version = "0.0.1-m0"
+const version = "0.1.0"
 
 func main() {
 	os.Exit(run())
@@ -79,6 +81,13 @@ func run() int {
 			fmt.Fprintln(os.Stderr, "      install it with: "+tmux.InstallHint())
 			return 1
 		}
+		if cfg.General.DisplayMode == config.DisplayWorkspace && !tmux.InWorkspace() {
+			if os.Getenv("TMUX") != "" {
+				fmt.Fprintln(os.Stderr, "gcrt: already inside tmux — running the tree in this pane.")
+			} else {
+				return bootstrapWorkspace(paths)
+			}
+		}
 		return browse(cfg, paths, file, problems, client)
 	default:
 		fmt.Fprintf(os.Stderr, "gcrt: unknown command %q\n", cmd)
@@ -102,9 +111,46 @@ func check(paths config.Paths, file *session.File, problems session.Problems) in
 }
 
 func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems, client *tmux.Client) int {
-	p := tea.NewProgram(tui.New(cfg, file, paths, problems, client),
-		tea.WithAltScreen(), tea.WithMouseCellMotion())
+	m := tui.New(cfg, file, paths, problems, client)
+	if tmux.InWorkspace() {
+		m.EnableWorkspace(os.Getenv("TMUX_PANE"), cfg.General.WorkspaceTreeWidth)
+	}
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "gcrt:", err)
+		return 1
+	}
+	return 0
+}
+
+// bootstrapWorkspace hands the terminal to a tmux session that hosts the tree
+// and every connection as panes. -A attaches when the workspace already exists,
+// so re-running gcrt returns to the sessions you left behind.
+func bootstrapWorkspace(paths config.Paths) int {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "gcrt"
+	}
+
+	args := []string{"-L", tmux.Socket,
+		"new-session", "-A", "-s", tmux.WorkspaceSession, "-n", tmux.TreeWindow,
+		"-e", "GCRT_WORKSPACE=1"}
+	if wd, err := os.Getwd(); err == nil {
+		args = append(args, "-c", wd)
+	}
+	args = append(args, exe, "tui",
+		"-config-dir", paths.Config,
+		"-state-dir", paths.State,
+		"-data-dir", paths.Data,
+		"-cache-dir", paths.Cache)
+
+	cmd := exec.Command("tmux", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		}
 		fmt.Fprintln(os.Stderr, "gcrt:", err)
 		return 1
 	}

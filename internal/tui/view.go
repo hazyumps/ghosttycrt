@@ -49,6 +49,19 @@ func (m *Model) View() string {
 }
 
 func (m *Model) viewHeader() string {
+	if m.width < 50 {
+		left := styleTitle.Render(" gcrt ")
+		if m.filtering {
+			left += styleText.Render("/" + m.filter + "█")
+		} else if m.filter != "" {
+			left += styleText.Render("/" + m.filter)
+		}
+		if len(m.rows) > m.bodyHeight() {
+			left += styleDim.Render(fmt.Sprintf(" %d/%d", m.cursor+1, len(m.rows)))
+		}
+		return clip(left, m.width)
+	}
+
 	left := styleTitle.Render(" ghosttycrt ")
 	if m.filtering {
 		left += styleDim.Render("filter: ") + styleText.Render("/"+m.filter+"█")
@@ -117,10 +130,22 @@ func (m *Model) renderRow(row session.Row) string {
 	return row.Prefix + m.statusGlyph(node.Session) + " " + styleDim.Render(pin) + " " + styleText.Render(node.Label)
 }
 
-// statusGlyph mirrors tmux state: attached, running, not running, or a session
-// whose transport cannot work at all.
+// statusGlyph mirrors real state: in workspace mode a connection is open beside
+// the tree, running in the background, or gone; inline it is attached, running,
+// not running, or a session whose transport cannot work at all.
 func (m *Model) statusGlyph(s *session.Session) string {
-	if st, ok := m.live[s.Slug]; ok {
+	if m.workspace {
+		if p, ok := m.panes[s.Slug]; ok {
+			switch {
+			case p.Dead:
+				return styleErr.Render("✗")
+			case p.Visible():
+				return styleOK.Render("●")
+			default:
+				return styleGroup.Render("○")
+			}
+		}
+	} else if st, ok := m.live[s.Slug]; ok {
 		if st.Attached > 0 {
 			return styleOK.Render("●")
 		}
@@ -133,17 +158,27 @@ func (m *Model) statusGlyph(s *session.Session) string {
 }
 
 func (m *Model) statusText(s *session.Session) string {
-	st, ok := m.live[s.Slug]
-	if !ok {
-		if _, err := transport.For(s, m.cfg); err != nil {
-			return "unavailable"
+	if m.workspace {
+		if p, ok := m.panes[s.Slug]; ok {
+			switch {
+			case p.Dead:
+				return fmt.Sprintf("exited (status %d)", p.Exit)
+			case p.Visible():
+				return "open beside the tree"
+			default:
+				return "running, hidden"
+			}
 		}
-		return "not running"
+	} else if st, ok := m.live[s.Slug]; ok {
+		if st.Attached > 0 {
+			return "attached"
+		}
+		return "running, detached"
 	}
-	if st.Attached > 0 {
-		return "attached"
+	if _, err := transport.For(s, m.cfg); err != nil {
+		return "unavailable"
 	}
-	return "running, detached"
+	return "not running"
 }
 
 func (m *Model) viewDetails(width, height int) string {
@@ -194,24 +229,43 @@ func (m *Model) viewDetails(width, height int) string {
 }
 
 func (m *Model) viewFooter() string {
-	left := styleDim.Render(" " + "enter:connect  d:detach/kill  n:new  e:edit  l:log  /:filter  r:refresh  ?:help")
+	if m.width < 50 {
+		switch {
+		case m.errMsg != "":
+			return clip(styleErr.Render(" ✗ "+m.errMsg), m.width)
+		case m.status != "":
+			return clip(styleText.Render(" "+m.status), m.width)
+		case m.filtering:
+			return clip(styleDim.Render(" type to filter  enter keep  esc clear"), m.width)
+		case m.workspace:
+			return clip(styleDim.Render(" enter open  d kill  / filter  q detach"), m.width)
+		default:
+			return clip(styleDim.Render(" enter connect  d kill  / filter  q quit"), m.width)
+		}
+	}
+
+	keys := "enter:connect  d:detach/kill  n:new  e:edit  l:log  /:filter  r:refresh  ?:help"
+	back := "Ctrl-b d returns to the tree "
+	if m.workspace {
+		keys = "enter:open  d:show/hide/kill  n:new  e:edit  l:log  /:filter  r:refresh  ?:help"
+		back = "Ctrl-b t returns to the tree "
+	}
+	left := styleDim.Render(" " + keys)
 	switch {
 	case m.errMsg != "":
 		left = styleErr.Render(" ✗ " + m.errMsg)
 	case m.status != "":
 		left = styleText.Render(" " + m.status)
 	}
-	right := styleDim.Render("Ctrl-b d returns to the tree ")
+	right := styleDim.Render(back)
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
 	}
-	line := left + strings.Repeat(" ", gap) + right
-
 	if m.filtering {
 		return styleDim.Render(" type to filter  enter:keep  esc:clear")
 	}
-	return line
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func (m *Model) viewEmpty() string {
@@ -283,6 +337,15 @@ func (m *Model) viewHelp() string {
 		{"q", "quit"},
 		{"mouse", "click to select, click again to connect"},
 		{"wheel", "scroll the tree"},
+	}
+	if m.workspace {
+		binds[3] = [2]string{"enter", "open the session beside the tree"}
+		binds[4] = [2]string{"d", "show, hide or kill the selected session"}
+		binds[9] = [2]string{"q", "detach — the workspace keeps running"}
+		binds = append(binds,
+			[2]string{"Ctrl-b t", "back to the tree from a session"},
+			[2]string{"Ctrl-b d", "detach the whole workspace"},
+		)
 	}
 	lines := []string{styleTitle.Render("ghosttycrt — help"), ""}
 	for _, b := range binds {

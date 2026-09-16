@@ -111,10 +111,7 @@ func (c *Client) BySlug() (map[string]SessionState, error) {
 }
 
 func (c *Client) Has(slug string) bool {
-	cmd := exec.Command(c.Bin, c.args("has-session", "-t", SessionName(slug))...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run() == nil
+	return c.HasTarget(SessionName(slug))
 }
 
 // Ensure creates the session if it is absent and applies opts either way, so

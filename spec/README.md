@@ -47,6 +47,16 @@ the session database. See `05-credentials.md`.
 Providers are configurable command templates, so neither vendor is hardcoded and
 `rbw` vs `vaultwarden-cli` is a config row, not a code change.
 
+**D6 — A second portable display mode: `workspace`.** Added 2026-09-16 at
+Patrick's request, after M1. Instead of suspending the tree and attaching in
+place, `workspace` runs the tree as pane 0 of a gcrt-owned tmux session and
+joins each connection in as a pane beside it, so several sessions are live on
+screen at once. It is still pure tmux — no Ghostty coupling, Linux unaffected —
+so it extends D3 rather than replacing it. `inline` remains the default and the
+contract; `workspace` is opt-in per `display_mode`, and `q` detaches rather than
+quitting because killing the workspace would take every session with it. See
+`02-architecture.md`.
+
 ## Open questions
 
 **Q1 — tmux acceptable as a hard dependency? — RESOLVED 2026-09-16: yes.**

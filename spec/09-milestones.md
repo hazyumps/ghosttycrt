@@ -70,6 +70,9 @@ touches the disk.
 
 ## M5 — display modes + polish (a few days)
 
+- [x] `workspace` mode — the tree in its own tmux pane with sessions tiled
+      beside it, several live at once. **Landed 2026-09-16**, ahead of the rest
+      of M5, at Patrick's request. See D6 in `README.md`.
 - [ ] `ghostty-tab` via AppleScript (macOS), with clean fallback on refusal
 - [ ] `ghostty-window`, exact flags verified per platform
 - [ ] `theme = "auto"` reading Ghostty's config

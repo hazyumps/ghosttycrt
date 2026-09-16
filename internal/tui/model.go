@@ -31,6 +31,13 @@ type Model struct {
 
 	live map[string]tmux.SessionState
 
+	// workspace mode: the tree is pane 0 of a tmux session and every connection
+	// is a tagged pane beside it.
+	workspace bool
+	paneID    string
+	treeWidth int
+	panes     map[string]tmux.Pane
+
 	help    bool
 	menu    *menuState
 	confirm *confirmState
@@ -64,6 +71,12 @@ type attachReadyMsg struct{ cmd *exec.Cmd }
 type attachFailedMsg struct{ err error }
 type attachDoneMsg struct{ err error }
 
+type workspaceShownMsg struct {
+	paneID string
+	slug   string
+	err    error
+}
+
 func New(cfg *config.Config, file *session.File, paths config.Paths, problems session.Problems, client *tmux.Client) *Model {
 	m := &Model{
 		cfg:       cfg,
@@ -73,11 +86,24 @@ func New(cfg *config.Config, file *session.File, paths config.Paths, problems se
 		client:    client,
 		collapsed: map[string]bool{},
 		live:      map[string]tmux.SessionState{},
+		panes:     map[string]tmux.Pane{},
 	}
 	m.rebuild()
 	m.cursorToFirstSession()
 	m.refresh()
 	return m
+}
+
+// EnableWorkspace switches the model to workspace mode: connections become
+// panes of the tmux session this process is already running inside.
+func (m *Model) EnableWorkspace(paneID string, treeWidth int) {
+	m.workspace = true
+	m.paneID = paneID
+	m.treeWidth = treeWidth
+	if err := m.client.Configure(treeWidth, paneID); err != nil {
+		m.errMsg = err.Error()
+	}
+	m.refresh()
 }
 
 func (m *Model) Init() tea.Cmd { return nil }
@@ -172,10 +198,28 @@ func (m *Model) selectedSession() *session.Session {
 }
 
 func (m *Model) refresh() {
-	m.live = map[string]tmux.SessionState{}
+	m.errMsg = ""
 	if !m.client.Available() {
 		return
 	}
+
+	if m.workspace {
+		panes, err := m.client.Panes()
+		if err != nil {
+			m.errMsg = err.Error()
+			return
+		}
+		m.panes = map[string]tmux.Pane{}
+		for _, p := range panes {
+			if p.Slug == "" {
+				continue
+			}
+			m.panes[p.Slug] = p
+		}
+		return
+	}
+
+	m.live = map[string]tmux.SessionState{}
 	if bySlug, err := m.client.BySlug(); err == nil {
 		m.live = bySlug
 	} else {
@@ -183,7 +227,18 @@ func (m *Model) refresh() {
 	}
 }
 
-func (m *Model) running() int { return len(m.live) }
+// paneFor is the workspace pane backing a session, if it is running.
+func (m *Model) paneFor(s *session.Session) (tmux.Pane, bool) {
+	p, ok := m.panes[s.Slug]
+	return p, ok
+}
+
+func (m *Model) running() int {
+	if m.workspace {
+		return len(m.panes)
+	}
+	return len(m.live)
+}
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -212,6 +267,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errMsg = "attach: " + msg.err.Error()
 		} else {
 			m.status = "detached — Ctrl-b d always returns to the tree"
+		}
+		m.refresh()
+		return m, nil
+
+	case workspaceShownMsg:
+		if msg.err != nil {
+			m.errMsg = msg.err.Error()
+		} else {
+			m.status = msg.slug + " is open beside the tree"
 		}
 		m.refresh()
 		return m, nil
@@ -315,6 +379,9 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "q":
+		if m.workspace {
+			return m, m.detachWorkspace()
+		}
 		if m.cfg.General.ConfirmOnQuit && m.running() > 0 {
 			n := m.running()
 			m.confirm = &confirmState{
@@ -354,6 +421,9 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.collapse()
 	case "enter":
 		if s := m.selectedSession(); s != nil {
+			if m.workspace {
+				return m, m.beginShow(s)
+			}
 			return m, m.beginAttach(s)
 		}
 	case "d":
@@ -469,10 +539,55 @@ func (m *Model) beginAttach(s *session.Session) tea.Cmd {
 	}
 }
 
+// beginShow opens a session as a pane beside the tree, creating it if needed.
+func (m *Model) beginShow(s *session.Session) tea.Cmd {
+	tr, err := transport.For(s, m.cfg)
+	if err != nil {
+		m.errMsg = err.Error()
+		return nil
+	}
+	if err := tr.Validate(s); err != nil {
+		m.errMsg = err.Error()
+		return nil
+	}
+	argv, env, err := tr.Argv(s, "")
+	if err != nil {
+		m.errMsg = err.Error()
+		return nil
+	}
+
+	client := m.client
+	slug := s.Slug
+	width := m.treeWidth
+	m.errMsg = ""
+	m.status = "opening " + s.Name + "…"
+
+	return func() tea.Msg {
+		if !client.Available() {
+			return workspaceShownMsg{err: fmt.Errorf("tmux is not installed (%s)", tmux.InstallHint())}
+		}
+		id, err := client.Show(slug, argv, env, width)
+		return workspaceShownMsg{paneID: id, slug: slug, err: err}
+	}
+}
+
+func (m *Model) detachWorkspace() tea.Cmd {
+	if err := m.client.DetachSelf(); err != nil {
+		m.errMsg = err.Error()
+		return nil
+	}
+	m.status = "detached — run gcrt again to come back to it"
+	return nil
+}
+
 func (m *Model) openSessionMenu() {
 	s := m.selectedSession()
 	if s == nil {
 		m.status = "select a session first"
+		return
+	}
+	if m.workspace {
+		m.openWorkspaceMenu(s)
 		return
 	}
 	if _, ok := m.live[s.Slug]; !ok {
@@ -522,7 +637,96 @@ func (m *Model) askKill(s *session.Session) {
 	}
 }
 
-func (m *Model) Filter() string { return m.filter }
+func (m *Model) openWorkspaceMenu(s *session.Session) {
+	pane, running := m.paneFor(s)
+	items := []menuItem{}
+
+	if !running {
+		items = append(items, menuItem{
+			label: "Connect",
+			hint:  "nothing is running for this session yet",
+			run:   func() tea.Cmd { return m.beginShow(s) },
+		})
+	} else {
+		if pane.Visible() {
+			items = append(items, menuItem{
+				label: "Hide",
+				hint:  "take it off screen, keep it running",
+				run:   func() tea.Cmd { m.hidePane(s, pane); return nil },
+			})
+		} else {
+			items = append(items, menuItem{
+				label: "Show",
+				hint:  "bring it back beside the tree",
+				run:   func() tea.Cmd { return m.beginShow(s) },
+			})
+		}
+		items = append(items, menuItem{
+			label:       "Kill",
+			hint:        "stop the session and its process",
+			destructive: true,
+			run:         func() tea.Cmd { m.askKillPane(s, pane); return nil },
+		})
+	}
+
+	items = append(items, menuItem{
+		label:       "Shut down workspace",
+		hint:        "stop every session and exit gcrt",
+		destructive: true,
+		run:         func() tea.Cmd { m.askShutdownWorkspace(); return nil },
+	})
+
+	m.menu = &menuState{title: s.Name, items: items}
+}
+
+func (m *Model) hidePane(s *session.Session, pane tmux.Pane) {
+	if err := m.client.Hide(pane.ID, s.Slug); err != nil {
+		m.errMsg = err.Error()
+	} else if err := m.client.Retile(m.treeWidth); err != nil {
+		m.errMsg = err.Error()
+	} else {
+		m.status = s.Name + " hidden — still running"
+	}
+	m.refresh()
+}
+
+func (m *Model) askKillPane(s *session.Session, pane tmux.Pane) {
+	m.confirm = &confirmState{
+		prompt: fmt.Sprintf("Kill %s? The session and its process stop. Logs are kept.", s.Name),
+		yes: func() tea.Cmd {
+			if err := m.client.KillPane(pane.ID); err != nil {
+				m.errMsg = err.Error()
+			} else {
+				m.status = s.Name + " killed"
+			}
+			m.refresh()
+			return nil
+		},
+	}
+}
+
+func (m *Model) askShutdownWorkspace() {
+	n := m.running()
+	m.confirm = &confirmState{
+		prompt: fmt.Sprintf("Shut down the workspace? %d session(s) stop and gcrt exits.", n),
+		yes: func() tea.Cmd {
+			if err := m.client.ShutdownWorkspace(); err != nil {
+				m.errMsg = err.Error()
+				return nil
+			}
+			return tea.Quit
+		},
+	}
+}
+
+// SelectedName is the highlighted row's label, empty on an empty tree.
+func (m *Model) SelectedName() string {
+	row := m.selected()
+	if row == nil {
+		return ""
+	}
+	return row.Node.Label
+}
 
 func (m *Model) Capabilities() []string {
 	caps := []string{}
@@ -535,20 +739,6 @@ func (m *Model) Capabilities() []string {
 	caps = append(caps, "vault "+m.cfg.Credentials.DefaultProvider)
 	caps = append(caps, "picocom "+present("picocom"))
 	return caps
-}
-
-func (m *Model) SessionCount() int { return len(m.file.Session) }
-
-func (m *Model) Status() string { return m.status }
-func (m *Model) Err() string    { return m.errMsg }
-
-// SelectedName is the highlighted row's label, empty on an empty tree.
-func (m *Model) SelectedName() string {
-	row := m.selected()
-	if row == nil {
-		return ""
-	}
-	return row.Node.Label
 }
 
 func present(bin string) string {

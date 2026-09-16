@@ -117,7 +117,7 @@ func check(paths config.Paths, file *session.File, problems session.Problems) in
 func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems, client *tmux.Client) int {
 	m := tui.New(cfg, file, paths, problems, client)
 	if tmux.InWorkspace() {
-		m.EnableWorkspace(os.Getenv("TMUX_PANE"), cfg.General.WorkspaceTreeWidth)
+		m.EnableWorkspace(os.Getenv("TMUX_PANE"))
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {

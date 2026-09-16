@@ -107,7 +107,7 @@ pseudoterminal only through tmux (`capture-pane`) when the log viewer asks.
 | Mode | Platform | Mechanism | Notes |
 |---|---|---|---|
 | `inline` | macOS + Linux | `tea.ExecProcess` → `tmux attach` | default; zero Ghostty coupling |
-| `workspace` | macOS + Linux | tree and sessions as panes of one tmux session | several sessions visible at once, tree pinned left |
+| `workspace` | macOS + Linux | tree and connections as windows/panes of one tmux session | tabs (default) or tiled splits; several visible at once |
 | `ghostty-tab` | macOS only | AppleScript `new tab in front window` | keeps the tree visible in its own tab; requires Automation permission (TCC) |
 | `ghostty-window` | macOS + Linux | spawn `ghostty` with the attach as its command | best-effort; verify the exact flag per platform at M5 |
 
@@ -119,23 +119,36 @@ require a display mode other than `inline`.
 ### `workspace`
 
 `gcrt` starts itself inside a tmux session of its own (`gscrt/workspace`) on the
-private `gcrt` socket, then runs its TUI in pane 0. `enter` ensures a pane for
-the session — created as a background window, then `join-pane`d in — and focuses
-it, so the tree stays visible on the left and sessions tile to its right
-(`main-vertical`, tree pinned at `workspace_tree_width`). Hiding a session
-`break-pane`s it back into a background window: still running, off screen. Every
-pane is tagged with `@gcrt_slug`, which is how the tree maps panes back to
-sessions.
+private `gcrt` socket, then runs its TUI in a window named `tree`. Every
+connection is a pane tagged with `@gcrt_slug`, which is how the tree maps panes
+back to sessions. `workspace_layout` decides where that pane lives:
 
-Consequences worth knowing:
+| Layout | How a connection appears |
+|---|---|
+| `tabs` (default) | its own tmux window — a tab, with the tree in a tab of its own |
+| `split` | `join-pane`d into the tree window, tiled to the right of the tree |
+
+In `split`, `main-vertical` pins the tree to `workspace_tree_width` and the
+connections divide the remaining space; hiding one `break-pane`s it back into a
+background window so the process keeps running. In `tabs` nothing is hidden —
+the window is the tab — so `d` offers *Switch to it* and *Kill* rather than
+Show/Hide, and the tmux status line is the tab bar (`window-status-format` puts
+a `•` on a tab whose output is waiting; the tree window has `monitor-activity`
+off so its own redraws never flag it).
+
+`Ctrl-b t` returns to the tree in both layouts — as `select-window` in `tabs`,
+because `select-pane` does not cross windows.
+
+Other consequences worth knowing:
 
 - `Ctrl-b d` detaches the whole workspace; `q` does the same, because quitting
   would kill the panes that *are* the sessions. Shutting the workspace down is a
   confirmed action in the `d` menu.
 - A crashed connection leaves a dead pane showing its exit status
-  (`remain-on-exit`), rather than vanishing.
-- `mouse on` gives click-to-focus panes and draggable borders, and costs
-  drag-to-select (use Shift-drag).
+  (`remain-on-exit`) rather than vanishing. Entering it again restarts it: a
+  dead pane cannot be revived, so it is replaced.
+- `mouse on` gives click-to-focus panes, clickable tabs in the status line, and
+  draggable borders; it costs drag-to-select (use Shift-drag).
 - A detached workspace's panes persist, including the tree process, so
   re-running `gcrt` reattaches rather than rebuilding.
 

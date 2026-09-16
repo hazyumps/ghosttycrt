@@ -24,6 +24,7 @@ type General struct {
 	ConfirmOnQuit      bool   `toml:"confirm_on_quit"`
 	SecretScrubLogs    bool   `toml:"secret_scrub_logs"`
 	WorkspaceTreeWidth int    `toml:"workspace_tree_width"`
+	WorkspaceLayout    string `toml:"workspace_layout"`
 	Theme              Theme  `toml:"theme"`
 }
 
@@ -99,6 +100,18 @@ const (
 
 var validDisplayModes = []string{DisplayInline, DisplayGhosttyTab, DisplayGhosttyWindow, DisplayWorkspace}
 
+// Workspace layouts: how a connection is shown beside the tree.
+const (
+	// WorkspaceTabs gives every connection its own tmux window — a tab, with
+	// the tree in a tab of its own.
+	WorkspaceTabs = "tabs"
+	// WorkspaceSplit tiles connections as panes beside the tree, all visible
+	// at once.
+	WorkspaceSplit = "split"
+)
+
+var validWorkspaceLayouts = []string{WorkspaceTabs, WorkspaceSplit}
+
 func Default() *Config {
 	return &Config{
 		General: General{
@@ -107,6 +120,7 @@ func Default() *Config {
 			ConfirmOnQuit:      true,
 			SecretScrubLogs:    true,
 			WorkspaceTreeWidth: 34,
+			WorkspaceLayout:    WorkspaceTabs,
 			Theme:              Theme{Name: "auto"},
 		},
 		Transports: Transports{
@@ -184,6 +198,10 @@ func (c *Config) Validate() []error {
 	if c.General.WorkspaceTreeWidth < 20 || c.General.WorkspaceTreeWidth > 200 {
 		errs = append(errs, fmt.Errorf("general.workspace_tree_width %d must be between 20 and 200",
 			c.General.WorkspaceTreeWidth))
+	}
+	if !contains(validWorkspaceLayouts, c.General.WorkspaceLayout) {
+		errs = append(errs, fmt.Errorf("general.workspace_layout %q is not one of %s",
+			c.General.WorkspaceLayout, strings.Join(validWorkspaceLayouts, ", ")))
 	}
 	return errs
 }

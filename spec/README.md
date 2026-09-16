@@ -49,13 +49,22 @@ Providers are configurable command templates, so neither vendor is hardcoded and
 
 **D6 — A second portable display mode: `workspace`.** Added 2026-09-16 at
 Patrick's request, after M1. Instead of suspending the tree and attaching in
-place, `workspace` runs the tree as pane 0 of a gcrt-owned tmux session and
-joins each connection in as a pane beside it, so several sessions are live on
-screen at once. It is still pure tmux — no Ghostty coupling, Linux unaffected —
-so it extends D3 rather than replacing it. `inline` remains the default and the
-contract; `workspace` is opt-in per `display_mode`, and `q` detaches rather than
-quitting because killing the workspace would take every session with it. See
-`02-architecture.md`.
+place, `workspace` runs the tree as pane 0 of a gcrt-owned tmux session and puts
+each connection alongside it, so several sessions are live at once. It is still
+pure tmux — no Ghostty coupling, Linux unaffected — so it extends D3 rather than
+replacing it. `inline` remains the default and the contract; `workspace` is
+opt-in per `display_mode`, and `q` detaches rather than quitting because killing
+the workspace would take every session with it. See `02-architecture.md`.
+
+**D7 — Two workspace layouts: `tabs` (default) and `split`.** Added
+2026-09-16, again at Patrick's request: `tabs` gives every connection a tmux
+window of its own, so the connections read as tabs and the tree keeps a tab
+beside them (`Ctrl-b t` returns to it, and the tmux status line *is* the tab
+bar, with `•` marking a tab whose output is waiting). `split` tiles them as
+panes beside the tree so several are visible at once. The two are the same
+machinery — one tagged tmux pane per connection — differing only in whether the
+pane is joined into the tree window or left in a window of its own, so this is a
+config row rather than a second implementation.
 
 ## Open questions
 

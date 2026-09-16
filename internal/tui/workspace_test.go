@@ -21,6 +21,10 @@ import (
 // on a private socket with the tree pane already in it — and points the ssh
 // transport at a script, so a "connection" stays up instead of really dialling.
 func workspaceModel(t *testing.T, width int, sshBody string) (*tui.Model, *tmux.Client) {
+	return workspaceLayout(t, config.WorkspaceSplit, width, sshBody)
+}
+
+func workspaceLayout(t *testing.T, layout string, width int, sshBody string) (*tui.Model, *tmux.Client) {
 	t.Helper()
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux not installed")
@@ -31,7 +35,7 @@ func workspaceModel(t *testing.T, width int, sshBody string) (*tui.Model, *tmux.
 		t.Fatal(err)
 	}
 
-	socket := fmt.Sprintf("gcrt-ws-%d", os.Getpid())
+	socket := fmt.Sprintf("gcrt-ws-%d-%s", os.Getpid(), layout)
 	client := tmux.New(socket)
 	t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
 
@@ -42,12 +46,14 @@ func workspaceModel(t *testing.T, width int, sshBody string) (*tui.Model, *tmux.
 	}
 
 	cfg := config.Default()
+	cfg.General.WorkspaceLayout = layout
+	cfg.General.WorkspaceTreeWidth = 30
 	cfg.Transports.SSH.Binary = script
 
 	m := tui.New(cfg, sample(), config.DefaultPaths(), session.Problems{}, client)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: 30})
 	m = updated.(*tui.Model)
-	m.EnableWorkspace("%0", 30)
+	m.EnableWorkspace("%0")
 	return m, client
 }
 

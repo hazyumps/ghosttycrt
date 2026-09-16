@@ -24,6 +24,7 @@ func SessionName(slug string) string { return Prefix + slug }
 type Client struct {
 	Socket string
 	Bin    string
+	Layout Layout
 }
 
 func New(socket string) *Client { return &Client{Socket: socket, Bin: "tmux"} }

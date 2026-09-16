@@ -4,9 +4,12 @@
 [general]
 default_transport = "ssh"
 # inline    — enter suspends the tree and hands the terminal to tmux attach
-# workspace — the tree lives in its own tmux pane with sessions tiled beside it
+# workspace — the tree lives in its own tmux pane with sessions beside it
 display_mode      = "inline"
 workspace_tree_width = 34
+# tabs  — every connection gets its own tab, the tree in a tab of its own
+# split — connections tile as panes beside the tree, several visible at once
+workspace_layout  = "tabs"
 confirm_on_quit   = true
 secret_scrub_logs = true
 

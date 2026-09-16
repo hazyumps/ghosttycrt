@@ -51,6 +51,12 @@ than the pane wraps and wrecks the whole frame, which is how this was found.
 Narrow terminals collapse to a single column: tree, with details shown inline
 under the highlighted row.
 
+In `workspace_layout = "tabs"` each connection is a tmux window, so the tmux
+status line **is** the tab bar — `0:tree  1:core-sw-01  2:k3s-01`, the current
+tab in reverse video and a `•` on any tab whose output is waiting. Clicking a
+tab switches to it. The tree is then a tab rather than a permanent sidebar, so
+the details column only appears while the tree pane is wide enough for it.
+
 ## Views
 
 | View | Entered by | Purpose |

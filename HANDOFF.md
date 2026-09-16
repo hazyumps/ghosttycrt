@@ -16,6 +16,7 @@ like SecureCRT.
 
 | Area | Path |
 |---|---|
+| `workspace_layout`: `tabs` (default) or `split` | `internal/config/`, `internal/tmux/workspace.go` |
 | header menu bar (clickable Help / Filter / Refresh / Quit), scrollable help | `internal/tui/view.go` |
 | SecureCRT `.ini` parser, field mapping, deterministic ids, slug dedup | `internal/importers/securecrt/` |
 | `gcrt import securecrt [--from DIR] [--write]`, dry run by default | `cmd/gcrt/import.go` |
@@ -51,12 +52,12 @@ Keys that differ from `inline`:
 
 | | |
 |---|---|
-| `enter` | open the session beside the tree |
-| `d` | Show / Hide / Kill, plus *Shut down workspace* |
+| `enter` | go to the connection's tab (`tabs`) or open it beside the tree (`split`) |
+| `d` | Switch to it / Kill, plus *Shut down workspace* (`tabs`); Show / Hide / Kill in `split` |
 | `q` | **detach** — the workspace keeps running |
 | `Ctrl-b t` | back to the tree from a session pane |
 | `Ctrl-b d` | detach the whole workspace (tmux's own) |
-| mouse | click a pane to focus, drag a border to resize |
+| mouse | click a tab in the status line to switch; in `split`, click a pane to focus and drag a border to resize |
 
 Patrick's `~/.config/ghosttycrt/config.toml` is set to `workspace`, tree width 34.
 
@@ -134,16 +135,23 @@ M3 is what makes it feel like SecureCRT; M2 is what makes console work possible.
     '#{pane_id}'` (which does support it), or from `list-panes`.
 11. **`@gcrt_slug` pane options survive `join-pane` and `break-pane`.** Use them
     for identity; `pane_title` is overwritten by whatever the pane runs.
-12. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
+12. **`select-pane` does not cross windows.** In `tabs` layout the tree lives in
+    another window, so `prefix t` must be `select-window -t gscrt/workspace:tree`;
+    `select-pane -t %0` silently stays put. (`select-pane` still works in `split`,
+    where the tree shares the window.)
+13. **A dead pane cannot be revived.** `remain-on-exit` keeps it visible with its
+    status, but entering it again must `kill-pane` and rebuild — `respawn-pane`
+    would need the argv again, and reusing the pane leaves the dead flag set.
+14. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
     or fast typing) become **one** `KeyMsg` whose `String()` is `"jj"`, matching
     no single-key case — so both are dropped, and pasting into the filter did
     nothing. `Update` now detects a multi-rune `KeyMsg` and replays each rune.
     Any test that sends batched input hits this too.
-13. **A composed line wider than the pane wraps and wrecks the frame.** The
+15. **A composed line wider than the pane wraps and wrecks the frame.** The
     footer's key list alone is longer than 80 columns. `fitLine` drops the
     capability strip, then the scroll position, then clips. Same class of bug as
     the oversized modal: `Place` and `Width` never shrink what you hand them.
-14. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
+16. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
     20-column field pushes the following text out of the box. Clip before
     padding.
 

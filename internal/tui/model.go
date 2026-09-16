@@ -36,6 +36,7 @@ type Model struct {
 	workspace bool
 	paneID    string
 	treeWidth int
+	tabs      bool
 	panes     map[string]tmux.Pane
 
 	help    bool
@@ -96,16 +97,29 @@ func New(cfg *config.Config, file *session.File, paths config.Paths, problems se
 }
 
 // EnableWorkspace switches the model to workspace mode: connections become
-// panes of the tmux session this process is already running inside.
-func (m *Model) EnableWorkspace(paneID string, treeWidth int) {
+// panes or windows of the tmux session this process is already running inside.
+func (m *Model) EnableWorkspace(paneID string) {
 	m.workspace = true
 	m.paneID = paneID
-	m.treeWidth = treeWidth
-	if err := m.client.Configure(treeWidth, paneID); err != nil {
+	m.treeWidth = m.cfg.General.WorkspaceTreeWidth
+	m.tabs = m.cfg.General.WorkspaceLayout == config.WorkspaceTabs
+
+	m.client.SetLayout(m.layout())
+	if err := m.client.Configure(m.treeWidth, paneID); err != nil {
 		m.errMsg = err.Error()
 	}
 	m.refresh()
 }
+
+func (m *Model) layout() tmux.Layout {
+	if m.tabs {
+		return tmux.LayoutTabs
+	}
+	return tmux.LayoutSplit
+}
+
+// paneOpen reports whether a connection is the one on screen.
+func (m *Model) paneOpen(p tmux.Pane) bool { return p.Open(m.layout()) }
 
 func (m *Model) Init() tea.Cmd { return nil }
 
@@ -275,6 +289,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case workspaceShownMsg:
 		if msg.err != nil {
 			m.errMsg = msg.err.Error()
+		} else if m.tabs {
+			m.status = "switched to " + msg.slug
 		} else {
 			m.status = msg.slug + " is open beside the tree"
 		}
@@ -703,7 +719,15 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 			run:   func() tea.Cmd { return m.beginShow(s) },
 		})
 	} else {
-		if pane.Visible() {
+		if m.tabs {
+			if !m.paneOpen(pane) {
+				items = append(items, menuItem{
+					label: "Switch to it",
+					hint:  "go to its tab",
+					run:   func() tea.Cmd { return m.beginShow(s) },
+				})
+			}
+		} else if pane.Visible() {
 			items = append(items, menuItem{
 				label: "Hide",
 				hint:  "off screen, still running",
@@ -716,6 +740,7 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 				run:   func() tea.Cmd { return m.beginShow(s) },
 			})
 		}
+
 		items = append(items, menuItem{
 			label:       "Kill",
 			hint:        "stop it and its process",

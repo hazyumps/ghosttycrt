@@ -233,7 +233,7 @@ func (m *Model) statusGlyph(s *session.Session) string {
 			switch {
 			case p.Dead:
 				return styleErr.Render("✗")
-			case p.Visible():
+			case m.paneOpen(p):
 				return styleOK.Render("●")
 			default:
 				return styleGroup.Render("○")
@@ -257,9 +257,15 @@ func (m *Model) statusText(s *session.Session) string {
 			switch {
 			case p.Dead:
 				return fmt.Sprintf("exited (status %d)", p.Exit)
-			case p.Visible():
+			case m.paneOpen(p):
+				if m.tabs {
+					return "current tab"
+				}
 				return "open beside the tree"
 			default:
+				if m.tabs {
+					return "running in a tab"
+				}
 				return "running, hidden"
 			}
 		}

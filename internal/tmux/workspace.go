@@ -21,17 +21,49 @@ const (
 	workspaceOn = "1"
 )
 
+// Layout is how a connection is shown alongside the tree.
+type Layout string
+
+const (
+	// LayoutTabs gives every connection its own tmux window — a tab, with the
+	// tree in a window of its own.
+	LayoutTabs Layout = "tabs"
+	// LayoutSplit tiles connections as panes beside the tree, so several are
+	// visible at once.
+	LayoutSplit Layout = "split"
+)
+
 // Pane is one gcrt connection living inside the workspace.
 type Pane struct {
-	ID     string
-	Slug   string
-	Window string
-	Dead   bool
-	Exit   int
+	ID           string
+	Slug         string
+	Window       string
+	WindowActive bool
+	Dead         bool
+	Exit         int
 }
 
-// Visible reports whether the pane is currently tiled beside the tree.
+// Visible reports whether the pane is tiled beside the tree (split layout).
 func (p Pane) Visible() bool { return p.Window == TreeWindow }
+
+// Open reports whether the pane is the one on screen, in either layout: in
+// tabs that means its window is the current one, in split that it is in the
+// tree window.
+func (p Pane) Open(layout Layout) bool {
+	if layout == LayoutTabs {
+		return p.WindowActive
+	}
+	return p.Visible()
+}
+
+func (c *Client) SetLayout(l Layout) { c.Layout = l }
+
+func (c *Client) layout() Layout {
+	if c.Layout == "" {
+		return LayoutSplit
+	}
+	return c.Layout
+}
 
 func (c *Client) HasTarget(name string) bool {
 	cmd := exec.Command(c.Bin, c.args("has-session", "-t", name)...)
@@ -50,10 +82,10 @@ func parsePanes(out string) []Pane {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) < 5 {
+		if len(f) < 6 {
 			continue
 		}
-		p := Pane{ID: f[0], Slug: f[1], Window: f[2], Dead: f[3] == "1"}
+		p := Pane{ID: f[0], Slug: f[1], Window: f[2], Dead: f[3] == "1", WindowActive: f[5] == "1"}
 		p.Exit, _ = strconv.Atoi(f[4])
 		panes = append(panes, p)
 	}
@@ -62,7 +94,7 @@ func parsePanes(out string) []Pane {
 
 func (c *Client) Panes() ([]Pane, error) {
 	out, err := c.run("list-panes", "-s", "-t", WorkspaceSession, "-F",
-		"#{pane_id}\t#{@gcrt_slug}\t#{window_name}\t#{pane_dead}\t#{pane_dead_status}")
+		"#{pane_id}\t#{@gcrt_slug}\t#{window_name}\t#{pane_dead}\t#{pane_dead_status}\t#{window_active}")
 	if err != nil {
 		if noServer(err.Error()) || strings.Contains(err.Error(), "can't find session") {
 			return nil, nil
@@ -79,22 +111,57 @@ func (c *Client) Configure(treeWidth int, treePaneID string) error {
 		{"mouse", "on"},
 		{"remain-on-exit", "on"},
 		{"automatic-rename", "off"},
-		{"pane-border-status", "top"},
-		{"pane-border-format", " #{?@gcrt_slug,#{@gcrt_slug},tree} "},
 		{"history-limit", "50000"},
 		{"set-clipboard", "on"},
+		{"status", "on"},
 	}
+
+	if c.layout() == LayoutTabs {
+		// Each connection is a window, so the status bar is the tab bar; a
+		// bullet marks a tab with output waiting. A pane border would only
+		// steal a row from a window that holds one pane.
+		opts = append(opts,
+			[2]string{"pane-border-status", "off"},
+			[2]string{"monitor-activity", "on"},
+			[2]string{"window-status-format", " #W#{?window_activity_flag,•,} "},
+			[2]string{"window-status-current-format", "#[reverse,bold] #W #[default]"},
+		)
+	} else {
+		opts = append(opts,
+			[2]string{"pane-border-status", "top"},
+			[2]string{"pane-border-format", " #{?@gcrt_slug,#{@gcrt_slug},tree} "},
+		)
+	}
+
 	for _, o := range opts {
 		if _, err := c.run("set-option", "-g", o[0], o[1]); err != nil {
 			return err
 		}
 	}
-	if err := c.Retile(treeWidth); err != nil {
-		return err
+
+	if c.layout() == LayoutSplit {
+		if err := c.Retile(treeWidth); err != nil {
+			return err
+		}
+	} else {
+		// The tree redraws whenever we leave it, which would flag it as having
+		// activity forever. Only connections should show that marker.
+		if _, err := c.run("set-option", "-w", "-t", WorkspaceSession+":"+TreeWindow,
+			"monitor-activity", "off"); err != nil {
+			return err
+		}
 	}
+
 	if treePaneID != "" {
-		// A quick way back to the tree from a busy session pane.
-		if _, err := c.run("bind-key", "-T", "prefix", "t", "select-pane", "-t", treePaneID); err != nil {
+		// A quick way back to the tree from a busy session.
+		args := []string{"bind-key", "-T", "prefix", "t"}
+		if c.layout() == LayoutTabs {
+			// select-pane does not cross windows, so target the window.
+			args = append(args, "select-window", "-t", WorkspaceSession+":"+TreeWindow)
+		} else {
+			args = append(args, "select-pane", "-t", treePaneID)
+		}
+		if _, err := c.run(args...); err != nil {
 			return err
 		}
 	}
@@ -110,17 +177,31 @@ func (c *Client) Retile(treeWidth int) error {
 	return err
 }
 
-// Show makes a connection visible beside the tree and focuses it, creating it
-// first if it does not exist yet.
+// Show makes a connection the one on screen, creating it first if it does not
+// exist yet: a pane tiled beside the tree in split layout, the current tab in
+// tabs layout.
 func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, error) {
+	if c.layout() == LayoutTabs {
+		return c.showTab(slug, argv, env)
+	}
+
 	panes, err := c.Panes()
 	if err != nil {
 		return "", err
 	}
 
+	recreate := false
 	for _, p := range panes {
 		if p.Slug != slug {
 			continue
+		}
+		if p.Dead {
+			// A dead pane cannot be revived; drop it and build it again.
+			if _, err := c.run("kill-pane", "-t", p.ID); err != nil {
+				return "", err
+			}
+			recreate = true
+			break
 		}
 		if p.Visible() {
 			return p.ID, c.Focus(p.ID)
@@ -133,6 +214,7 @@ func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, e
 		}
 		return p.ID, c.Focus(p.ID)
 	}
+	_ = recreate
 
 	id, err := c.newSessionWindow(slug, argv, env)
 	if err != nil {
@@ -145,6 +227,39 @@ func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, e
 		return "", err
 	}
 	return id, c.Focus(id)
+}
+
+// showTab selects the connection's window, creating it if needed.
+func (c *Client) showTab(slug string, argv, env []string) (string, error) {
+	panes, err := c.Panes()
+	if err != nil {
+		return "", err
+	}
+
+	for _, p := range panes {
+		if p.Slug != slug {
+			continue
+		}
+		if p.Dead {
+			if _, err := c.run("kill-pane", "-t", p.ID); err != nil {
+				return "", err
+			}
+			break
+		}
+		if _, err := c.run("select-window", "-t", WorkspaceSession+":"+p.Window); err != nil {
+			return "", err
+		}
+		return p.ID, nil
+	}
+
+	id, err := c.newSessionWindow(slug, argv, env)
+	if err != nil {
+		return "", err
+	}
+	if _, err := c.run("select-window", "-t", WorkspaceSession+":"+slug); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func (c *Client) newSessionWindow(slug string, argv, env []string) (string, error) {

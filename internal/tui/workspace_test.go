@@ -37,7 +37,13 @@ func workspaceLayout(t *testing.T, layout string, width int, sshBody string) (*t
 
 	socket := fmt.Sprintf("gcrt-ws-%d-%s", os.Getpid(), layout)
 	client := tmux.New(socket)
-	t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
+	// The sidebar layout runs a second server; give it a private socket too, so
+	// tests never touch a real one.
+	client.TabsSocket = socket + "-tabs"
+	t.Cleanup(func() {
+		exec.Command("tmux", "-L", socket, "kill-server").Run()
+		exec.Command("tmux", "-L", client.TabsSocket, "kill-server").Run()
+	})
 
 	out, err := exec.Command("tmux", "-L", socket, "new-session", "-d",
 		"-s", tmux.WorkspaceSession, "-n", tmux.TreeWindow, "sleep", "300").CombinedOutput()

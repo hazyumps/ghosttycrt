@@ -16,6 +16,11 @@ const (
 	WorkspaceSession = "gscrt/workspace"
 	TreeWindow       = "tree"
 
+	// The sidebar layout runs a second server: connections are windows there,
+	// and its status line is the tab bar drawn at the top of the content pane.
+	TabsSocket  = "gcrt-tabs"
+	TabsSession = "gscrt/tabs"
+
 	slugOption  = "@gcrt_slug"
 	envMarker   = "GCRT_WORKSPACE"
 	workspaceOn = "1"
@@ -28,6 +33,9 @@ const (
 	// LayoutTabs gives every connection its own tmux window — a tab, with the
 	// tree in a window of its own.
 	LayoutTabs Layout = "tabs"
+	// LayoutSidebar pins the tree on the left and shows connections as tabs in
+	// the region beside it, one at a time, via a second tmux server.
+	LayoutSidebar Layout = "sidebar"
 	// LayoutSplit tiles connections as panes beside the tree, so several are
 	// visible at once.
 	LayoutSplit Layout = "split"
@@ -46,14 +54,14 @@ type Pane struct {
 // Visible reports whether the pane is tiled beside the tree (split layout).
 func (p Pane) Visible() bool { return p.Window == TreeWindow }
 
-// Open reports whether the pane is the one on screen, in either layout: in
-// tabs that means its window is the current one, in split that it is in the
-// tree window.
+// Open reports whether the pane is the one on screen. In tabs and sidebar that
+// means its window is the current one; in split, that it is tiled in the tree
+// window.
 func (p Pane) Open(layout Layout) bool {
-	if layout == LayoutTabs {
-		return p.WindowActive
+	if layout == LayoutSplit {
+		return p.Visible()
 	}
-	return p.Visible()
+	return p.WindowActive
 }
 
 func (c *Client) SetLayout(l Layout) { c.Layout = l }
@@ -63,6 +71,16 @@ func (c *Client) layout() Layout {
 		return LayoutSplit
 	}
 	return c.Layout
+}
+
+// tabClient speaks to the sidebar's second server. Socket is settable so tests
+// can keep their servers apart.
+func (c *Client) tabClient() *Client {
+	socket := c.TabsSocket
+	if socket == "" {
+		socket = TabsSocket
+	}
+	return &Client{Socket: socket, Bin: c.Bin}
 }
 
 func (c *Client) HasTarget(name string) bool {
@@ -92,8 +110,8 @@ func parsePanes(out string) []Pane {
 	return panes
 }
 
-func (c *Client) Panes() ([]Pane, error) {
-	out, err := c.run("list-panes", "-s", "-t", WorkspaceSession, "-F",
+func (c *Client) listPanes(session string) ([]Pane, error) {
+	out, err := c.run("list-panes", "-s", "-t", session, "-F",
 		"#{pane_id}\t#{@gcrt_slug}\t#{window_name}\t#{pane_dead}\t#{pane_dead_status}\t#{window_active}")
 	if err != nil {
 		if noServer(err.Error()) || strings.Contains(err.Error(), "can't find session") {
@@ -102,6 +120,15 @@ func (c *Client) Panes() ([]Pane, error) {
 		return nil, err
 	}
 	return parsePanes(out), nil
+}
+
+// Panes lists the connections. In the sidebar layout they live in the second
+// server, so that is where the tree has to look.
+func (c *Client) Panes() ([]Pane, error) {
+	if c.layout() == LayoutSidebar {
+		return c.tabClient().listPanes(TabsSession)
+	}
+	return c.listPanes(WorkspaceSession)
 }
 
 // Configure applies the workspace-wide tmux settings. It is idempotent and safe
@@ -116,20 +143,25 @@ func (c *Client) Configure(treeWidth int, treePaneID string) error {
 		{"status", "on"},
 	}
 
-	if c.layout() == LayoutTabs {
-		// Each connection is a window, so the status bar is the tab bar; a
-		// bullet marks a tab with output waiting. A pane border would only
-		// steal a row from a window that holds one pane.
-		opts = append(opts,
-			[2]string{"pane-border-status", "off"},
-			[2]string{"monitor-activity", "on"},
-			[2]string{"window-status-format", " #W#{?window_activity_flag,•,} "},
-			[2]string{"window-status-current-format", "#[reverse,bold] #W #[default]"},
-		)
-	} else {
+	if c.layout() == LayoutSplit {
+		// Tiled panes need labels to tell them apart.
 		opts = append(opts,
 			[2]string{"pane-border-status", "top"},
 			[2]string{"pane-border-format", " #{?@gcrt_slug,#{@gcrt_slug},tree} "},
+		)
+	} else {
+		// A border would only steal a row: tabs carry their own names in the
+		// status line, and the sidebar draws a tab bar inside the content pane.
+		opts = append(opts, [2]string{"pane-border-status", "off"})
+	}
+
+	if c.layout() == LayoutTabs {
+		// Each connection is a window, so the status bar is the tab bar; a
+		// bullet marks a tab with output waiting.
+		opts = append(opts,
+			[2]string{"monitor-activity", "on"},
+			[2]string{"window-status-format", " #W#{?window_activity_flag,•,} "},
+			[2]string{"window-status-current-format", "#[reverse,bold] #W #[default]"},
 		)
 	}
 
@@ -148,6 +180,12 @@ func (c *Client) Configure(treeWidth int, treePaneID string) error {
 		// activity forever. Only connections should show that marker.
 		if _, err := c.run("set-option", "-w", "-t", WorkspaceSession+":"+TreeWindow,
 			"monitor-activity", "off"); err != nil {
+			return err
+		}
+	}
+
+	if c.layout() == LayoutSidebar {
+		if err := c.configureSidebar(treeWidth); err != nil {
 			return err
 		}
 	}
@@ -181,8 +219,11 @@ func (c *Client) Retile(treeWidth int) error {
 // exist yet: a pane tiled beside the tree in split layout, the current tab in
 // tabs layout.
 func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, error) {
-	if c.layout() == LayoutTabs {
+	switch c.layout() {
+	case LayoutTabs:
 		return c.showTab(slug, argv, env)
+	case LayoutSidebar:
+		return c.showSidebar(slug, argv, env)
 	}
 
 	panes, err := c.Panes()
@@ -190,7 +231,6 @@ func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, e
 		return "", err
 	}
 
-	recreate := false
 	for _, p := range panes {
 		if p.Slug != slug {
 			continue
@@ -200,7 +240,6 @@ func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, e
 			if _, err := c.run("kill-pane", "-t", p.ID); err != nil {
 				return "", err
 			}
-			recreate = true
 			break
 		}
 		if p.Visible() {
@@ -214,7 +253,6 @@ func (c *Client) Show(slug string, argv, env []string, treeWidth int) (string, e
 		}
 		return p.ID, c.Focus(p.ID)
 	}
-	_ = recreate
 
 	id, err := c.newSessionWindow(slug, argv, env)
 	if err != nil {
@@ -300,6 +338,11 @@ func (c *Client) Focus(paneID string) error {
 }
 
 func (c *Client) KillPane(paneID string) error {
+	if c.layout() == LayoutSidebar {
+		// The pane lives in the tab server; killing its window is the same act.
+		_, err := c.tabClient().run("kill-window", "-t", paneID)
+		return err
+	}
 	_, err := c.run("kill-pane", "-t", paneID)
 	return err
 }
@@ -316,7 +359,11 @@ func (c *Client) DetachSelf() error {
 	return nil
 }
 
+// ShutdownWorkspace tears down both servers in the sidebar layout.
 func (c *Client) ShutdownWorkspace() error {
+	if c.layout() == LayoutSidebar {
+		_ = c.tabClient().runQuiet("kill-server")
+	}
 	_, err := c.run("kill-session", "-t", WorkspaceSession)
 	return err
 }

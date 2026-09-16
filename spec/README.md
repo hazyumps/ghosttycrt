@@ -56,15 +56,23 @@ replacing it. `inline` remains the default and the contract; `workspace` is
 opt-in per `display_mode`, and `q` detaches rather than quitting because killing
 the workspace would take every session with it. See `02-architecture.md`.
 
-**D7 — Two workspace layouts: `tabs` (default) and `split`.** Added
-2026-09-16, again at Patrick's request: `tabs` gives every connection a tmux
-window of its own, so the connections read as tabs and the tree keeps a tab
-beside them (`Ctrl-b t` returns to it, and the tmux status line *is* the tab
-bar, with `•` marking a tab whose output is waiting). `split` tiles them as
-panes beside the tree so several are visible at once. The two are the same
-machinery — one tagged tmux pane per connection — differing only in whether the
-pane is joined into the tree window or left in a window of its own, so this is a
-config row rather than a second implementation.
+**D7 — Three workspace layouts: `tabs`, `sidebar`, `split`.** Added 2026-09-16,
+again at Patrick's request:
+
+| | |
+|---|---|
+| `tabs` | every connection is a tmux window; the tree keeps a window of its own and `Ctrl-b t` returns to it. The tmux status line is the tab bar. |
+| `sidebar` | the tree stays pinned on the left and connections are tabs in the region beside it, one visible at a time. |
+| `split` | connections tile as panes beside the tree, so several are visible at once. |
+
+`sidebar` needs a second tmux server, and that is not gratuitous: a tmux tab *is*
+a window, and a window's status line spans the whole terminal, so a tab bar
+cannot be drawn inside one region of a single window. The content pane therefore
+runs its own server, whose status line — positioned at the top — is that pane's
+tab bar. The usual nested-tmux hazard does not apply, because the outer client
+consumes the prefix key before a pane ever sees it: the inner server is driven
+purely by clicks on its tab bar and by gcrt's own commands. See
+`02-architecture.md`.
 
 ## Open questions
 

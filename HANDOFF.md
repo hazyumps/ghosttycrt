@@ -16,7 +16,7 @@ like SecureCRT.
 
 | Area | Path |
 |---|---|
-| `workspace_layout`: `tabs` (default) or `split` | `internal/config/`, `internal/tmux/workspace.go` |
+| `workspace_layout`: `tabs` (default), `sidebar`, or `split` | `internal/config/`, `internal/tmux/{workspace,sidebar}.go` |
 | header menu bar (clickable Help / Filter / Refresh / Quit), scrollable help | `internal/tui/view.go` |
 | SecureCRT `.ini` parser, field mapping, deterministic ids, slug dedup | `internal/importers/securecrt/` |
 | `gcrt import securecrt [--from DIR] [--write]`, dry run by default | `cmd/gcrt/import.go` |
@@ -52,8 +52,8 @@ Keys that differ from `inline`:
 
 | | |
 |---|---|
-| `enter` | go to the connection's tab (`tabs`) or open it beside the tree (`split`) |
-| `d` | Switch to it / Kill, plus *Shut down workspace* (`tabs`); Show / Hide / Kill in `split` |
+| `enter` | go to the connection's tab (`tabs`, `sidebar`) or open it beside the tree (`split`) |
+| `d` | Switch to it / Kill, plus *Shut down workspace* (`tabs`, `sidebar`); Show / Hide / Kill in `split` |
 | `q` | **detach** — the workspace keeps running |
 | `Ctrl-b t` | back to the tree from a session pane |
 | `Ctrl-b d` | detach the whole workspace (tmux's own) |
@@ -142,16 +142,23 @@ M3 is what makes it feel like SecureCRT; M2 is what makes console work possible.
 13. **A dead pane cannot be revived.** `remain-on-exit` keeps it visible with its
     status, but entering it again must `kill-pane` and rebuild — `respawn-pane`
     would need the argv again, and reusing the pane leaves the dead flag set.
-14. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
+14. **The `sidebar` layout runs a second tmux server** (`gcrt-tabs`) because a tab
+    is a window and a window's status line spans the whole terminal — there is no
+    way to draw a tab bar inside one region of a single window. Its session is
+    created lazily by the first connection and dies with the last, so the content
+    pane runs an attach *loop* rather than a bare `attach`. Nested tmux is safe
+    here: the outer client eats the prefix before a pane sees it, so the inner
+    server has no reachable prefix. Two servers must be torn down together.
+15. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
     or fast typing) become **one** `KeyMsg` whose `String()` is `"jj"`, matching
     no single-key case — so both are dropped, and pasting into the filter did
     nothing. `Update` now detects a multi-rune `KeyMsg` and replays each rune.
     Any test that sends batched input hits this too.
-15. **A composed line wider than the pane wraps and wrecks the frame.** The
+16. **A composed line wider than the pane wraps and wrecks the frame.** The
     footer's key list alone is longer than 80 columns. `fitLine` drops the
     capability strip, then the scroll position, then clips. Same class of bug as
     the oversized modal: `Place` and `Width` never shrink what you hand them.
-16. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
+17. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
     20-column field pushes the following text out of the box. Clip before
     padding.
 

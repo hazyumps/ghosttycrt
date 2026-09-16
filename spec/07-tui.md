@@ -54,8 +54,13 @@ under the highlighted row.
 In `workspace_layout = "tabs"` each connection is a tmux window, so the tmux
 status line **is** the tab bar — `0:tree  1:core-sw-01  2:k3s-01`, the current
 tab in reverse video and a `•` on any tab whose output is waiting. Clicking a
-tab switches to it. The tree is then a tab rather than a permanent sidebar, so
-the details column only appears while the tree pane is wide enough for it.
+tab switches to it. The tree is then a tab rather than a permanent sidebar.
+
+In `workspace_layout = "sidebar"` the tree stays where it is and the content
+pane beside it runs a second tmux server whose status line is drawn at the top —
+so the tab bar sits at the top of the region beside the tree, and the tree is
+always visible. The first click on that bar only moves focus into the content
+pane; a second switches the tab.
 
 ## Views
 

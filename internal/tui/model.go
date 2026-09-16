@@ -32,11 +32,12 @@ type Model struct {
 	live map[string]tmux.SessionState
 
 	// workspace mode: the tree is pane 0 of a tmux session and every connection
-	// is a tagged pane beside it.
+	// is a tagged pane or window alongside it.
 	workspace bool
 	paneID    string
 	treeWidth int
 	tabs      bool
+	sidebar   bool
 	panes     map[string]tmux.Pane
 
 	help    bool
@@ -103,7 +104,9 @@ func (m *Model) EnableWorkspace(paneID string) {
 	m.paneID = paneID
 	m.treeWidth = m.cfg.General.WorkspaceTreeWidth
 	m.tabs = m.cfg.General.WorkspaceLayout == config.WorkspaceTabs
+	m.sidebar = m.cfg.General.WorkspaceLayout == config.WorkspaceSidebar
 
+	m.client.TreePane = paneID
 	m.client.SetLayout(m.layout())
 	if err := m.client.Configure(m.treeWidth, paneID); err != nil {
 		m.errMsg = err.Error()
@@ -112,11 +115,19 @@ func (m *Model) EnableWorkspace(paneID string) {
 }
 
 func (m *Model) layout() tmux.Layout {
-	if m.tabs {
+	switch m.cfg.General.WorkspaceLayout {
+	case config.WorkspaceTabs:
 		return tmux.LayoutTabs
+	case config.WorkspaceSidebar:
+		return tmux.LayoutSidebar
+	default:
+		return tmux.LayoutSplit
 	}
-	return tmux.LayoutSplit
 }
+
+// tabbed is true when connections are tabs rather than tiled panes, whichever
+// of the two tab layouts is in use.
+func (m *Model) tabbed() bool { return m.layout() != tmux.LayoutSplit }
 
 // paneOpen reports whether a connection is the one on screen.
 func (m *Model) paneOpen(p tmux.Pane) bool { return p.Open(m.layout()) }
@@ -289,7 +300,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case workspaceShownMsg:
 		if msg.err != nil {
 			m.errMsg = msg.err.Error()
-		} else if m.tabs {
+		} else if m.tabbed() {
 			m.status = "switched to " + msg.slug
 		} else {
 			m.status = msg.slug + " is open beside the tree"
@@ -719,7 +730,7 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 			run:   func() tea.Cmd { return m.beginShow(s) },
 		})
 	} else {
-		if m.tabs {
+		if m.tabbed() {
 			if !m.paneOpen(pane) {
 				items = append(items, menuItem{
 					label: "Switch to it",

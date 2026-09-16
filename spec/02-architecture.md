@@ -125,30 +125,52 @@ back to sessions. `workspace_layout` decides where that pane lives:
 
 | Layout | How a connection appears |
 |---|---|
-| `tabs` (default) | its own tmux window — a tab, with the tree in a tab of its own |
+| `tabs` | its own tmux window — a tab, with the tree in a tab of its own |
+| `sidebar` | a window on a *second* server, whose status line is drawn at the top of a content pane beside the pinned tree |
 | `split` | `join-pane`d into the tree window, tiled to the right of the tree |
 
 In `split`, `main-vertical` pins the tree to `workspace_tree_width` and the
 connections divide the remaining space; hiding one `break-pane`s it back into a
-background window so the process keeps running. In `tabs` nothing is hidden —
-the window is the tab — so `d` offers *Switch to it* and *Kill* rather than
-Show/Hide, and the tmux status line is the tab bar (`window-status-format` puts
-a `•` on a tab whose output is waiting; the tree window has `monitor-activity`
-off so its own redraws never flag it).
+background window so the process keeps running. In the two tab layouts nothing
+is hidden — a window *is* the tab — so `d` offers *Switch to it* and *Kill*
+rather than Show/Hide. In `tabs` the outer status line is the tab bar; in
+`sidebar` the inner one is, with `window-status-format` putting a `•` on a tab
+whose output is waiting, and the tree window has `monitor-activity` off so its
+own redraws never flag it.
 
-`Ctrl-b t` returns to the tree in both layouts — as `select-window` in `tabs`,
-because `select-pane` does not cross windows.
+#### Why `sidebar` runs two servers
+
+A tmux tab is a window, and a window's status line spans the whole terminal.
+There is therefore no way to draw a tab bar inside one *region* of a single
+window: pane borders name one pane each and are not clickable per tab. The
+content pane runs a second server (`gcrt-tabs`) whose status line is positioned
+at the top, which makes it the tab bar for exactly that region.
+
+The familiar nested-tmux hazard does not apply. The outer client consumes the
+prefix key before any pane sees it, so the inner server has no reachable prefix
+and is driven entirely by clicks on its tab bar and by gcrt's own commands. The
+costs are real but contained: two servers to start, tear down, and reattach, and
+a second place connection state lives.
+
+The content pane runs an attach loop rather than a bare `tmux attach`, because
+the tab server's session is created lazily on the first connection and dies with
+the last one; the loop reports *no connections yet* and retries.
+
+`Ctrl-b t` returns to the tree in every layout — as `select-window` in `tabs`,
+and as `select-pane` in `sidebar` and `split`, where the tree shares the window.
 
 Other consequences worth knowing:
 
 - `Ctrl-b d` detaches the whole workspace; `q` does the same, because quitting
   would kill the panes that *are* the sessions. Shutting the workspace down is a
-  confirmed action in the `d` menu.
+  confirmed action in the `d` menu, and tears down both servers.
 - A crashed connection leaves a dead pane showing its exit status
   (`remain-on-exit`) rather than vanishing. Entering it again restarts it: a
   dead pane cannot be revived, so it is replaced.
-- `mouse on` gives click-to-focus panes, clickable tabs in the status line, and
-  draggable borders; it costs drag-to-select (use Shift-drag).
+- `mouse on` gives click-to-focus panes, clickable tabs, and draggable borders;
+  it costs drag-to-select (use Shift-drag). Clicking a tab in the `sidebar`
+  costs one click the first time — the first click only moves focus into the
+  content pane.
 - A detached workspace's panes persist, including the tree process, so
   re-running `gcrt` reattaches rather than rebuilding.
 

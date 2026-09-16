@@ -25,6 +25,11 @@ type Client struct {
 	Socket string
 	Bin    string
 	Layout Layout
+
+	// TabsSocket is the sidebar layout's second server.
+	TabsSocket string
+	// TreePane is the tree's own pane, learned from $TMUX_PANE.
+	TreePane string
 }
 
 func New(socket string) *Client { return &Client{Socket: socket, Bin: "tmux"} }
@@ -36,6 +41,12 @@ func (c *Client) args(rest ...string) []string {
 func (c *Client) Available() bool {
 	_, err := exec.LookPath(c.Bin)
 	return err == nil
+}
+
+// runQuiet discards output, for calls whose failure does not matter.
+func (c *Client) runQuiet(rest ...string) error {
+	_, err := c.run(rest...)
+	return err
 }
 
 func (c *Client) run(rest ...string) (string, error) {

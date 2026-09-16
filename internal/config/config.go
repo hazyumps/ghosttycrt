@@ -105,12 +105,17 @@ const (
 	// WorkspaceTabs gives every connection its own tmux window — a tab, with
 	// the tree in a tab of its own.
 	WorkspaceTabs = "tabs"
+	// WorkspaceSidebar pins the tree on the left and shows the connections as
+	// tabs in the region beside it, one visible at a time. It needs a second
+	// tmux server: tabs are windows, and a window's status line spans the whole
+	// terminal, so a tab bar cannot live inside a single tmux window.
+	WorkspaceSidebar = "sidebar"
 	// WorkspaceSplit tiles connections as panes beside the tree, all visible
 	// at once.
 	WorkspaceSplit = "split"
 )
 
-var validWorkspaceLayouts = []string{WorkspaceTabs, WorkspaceSplit}
+var validWorkspaceLayouts = []string{WorkspaceTabs, WorkspaceSidebar, WorkspaceSplit}
 
 func Default() *Config {
 	return &Config{

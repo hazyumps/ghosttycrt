@@ -10,9 +10,9 @@ the terminal-emulator business because Ghostty already does that better.
 replacement for SSH.** `enter` creates or reattaches a tmux session and hands
 you the terminal; the session outlives `gcrt` and Ghostty. With
 `display_mode = "workspace"` the tree lives in a tmux window of its own and
-every connection gets a **tab** beside it (`workspace_layout = "tabs"`, the
-default) — or tiles as a split pane if you set `workspace_layout = "split"` and
-want several visible at once. The top row is a clickable menu bar; `?` or the
+every connection gets its own tab (`workspace_layout = "tabs"`), or the tree
+stays pinned on the left with the tabs beside it (`"sidebar"`), or connections
+tile as panes when you want several visible at once (`"split"`). The top row is a clickable menu bar; `?` or the
 `Help` item opens the full key and command list. Serial, CRUD, and logging are
 next ([`spec/09-milestones.md`](spec/09-milestones.md)).
 

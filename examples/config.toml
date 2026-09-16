@@ -7,8 +7,9 @@ default_transport = "ssh"
 # workspace — the tree lives in its own tmux pane with sessions beside it
 display_mode      = "inline"
 workspace_tree_width = 34
-# tabs  — every connection gets its own tab, the tree in a tab of its own
-# split — connections tile as panes beside the tree, several visible at once
+# tabs    — every connection gets its own tab, the tree in a tab of its own
+# sidebar — tree pinned on the left, connections as tabs in the region beside it
+# split   — connections tile as panes beside the tree, several visible at once
 workspace_layout  = "tabs"
 confirm_on_quit   = true
 secret_scrub_logs = true

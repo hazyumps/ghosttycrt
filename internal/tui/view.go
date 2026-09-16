@@ -258,12 +258,12 @@ func (m *Model) statusText(s *session.Session) string {
 			case p.Dead:
 				return fmt.Sprintf("exited (status %d)", p.Exit)
 			case m.paneOpen(p):
-				if m.tabs {
+				if m.tabbed() {
 					return "current tab"
 				}
 				return "open beside the tree"
 			default:
-				if m.tabs {
+				if m.tabbed() {
 					return "running in a tab"
 				}
 				return "running, hidden"

@@ -290,11 +290,8 @@ func (m *Model) viewEmpty() string {
 }
 
 func (m *Model) viewMenu() string {
-	lines := []string{
-		styleTitle.Render(m.menu.title),
-		styleDim.Render("choose an action"),
-		"",
-	}
+	inner := m.innerWidth()
+	lines := []string{styleDim.Render(clip("choose an action", inner))}
 	for i, item := range m.menu.items {
 		cursor := "  "
 		if i == m.menu.index {
@@ -306,21 +303,25 @@ func (m *Model) viewMenu() string {
 		} else {
 			label = styleText.Render(label)
 		}
-		lines = append(lines, cursor+label+"  "+styleDim.Render(item.hint))
+		line := cursor + label
+		// Hints only when there is room for them.
+		if inner >= 34 && item.hint != "" {
+			line += "  " + styleDim.Render(item.hint)
+		}
+		lines = append(lines, clip(line, inner))
 	}
-	lines = append(lines, "", styleDim.Render("j/k move   enter select   esc cancel"))
-	return m.center(lines)
+	lines = append(lines, "", styleDim.Render(clip("j/k move   enter select   esc cancel", inner)))
+	return m.modal(m.menu.title, lines)
 }
 
 func (m *Model) viewConfirm() string {
-	lines := []string{
-		styleWarn.Render("Confirm"),
-		"",
-		styleText.Render(m.confirm.prompt),
-		"",
-		styleDim.Render("y: yes      N: no (default)"),
+	inner := m.innerWidth()
+	lines := []string{styleWarn.Render("Confirm"), ""}
+	for _, l := range wrap(m.confirm.prompt, inner) {
+		lines = append(lines, styleText.Render(clip(l, inner)))
 	}
-	return m.center(lines)
+	lines = append(lines, "", styleDim.Render(clip("y: yes      N: no (default)", inner)))
+	return m.modal("", lines)
 }
 
 func (m *Model) viewHelp() string {
@@ -335,7 +336,7 @@ func (m *Model) viewHelp() string {
 		{"r", "refresh tmux state"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
-		{"mouse", "click to select, click again to connect"},
+		{"mouse", "click a session to open it"},
 		{"wheel", "scroll the tree"},
 	}
 	if m.workspace {
@@ -347,17 +348,72 @@ func (m *Model) viewHelp() string {
 			[2]string{"Ctrl-b d", "detach the whole workspace"},
 		)
 	}
-	lines := []string{styleTitle.Render("ghosttycrt — help"), ""}
+
+	inner := m.innerWidth()
+	lines := []string{styleTitle.Render(clip("ghosttycrt — help", inner)), ""}
 	for _, b := range binds {
-		lines = append(lines, "  "+styleText.Width(14).Render(b[0])+styleDim.Render(b[1]))
+		key := styleText.Render(b[0])
+		if inner >= 30 {
+			lines = append(lines, "  "+styleText.Width(12).Render(b[0])+styleDim.Render(clip(b[1], inner-14)))
+		} else {
+			lines = append(lines, "  "+key)
+		}
 	}
-	lines = append(lines, "", styleDim.Render("  "+m.paths.SessionsFile()))
-	return m.center(lines)
+	lines = append(lines, "", styleDim.Render(clip(m.paths.SessionsFile(), inner)))
+	return m.modal("", lines)
 }
 
-func (m *Model) center(lines []string) string {
-	box := styleBox.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+// innerWidth is how wide modal content may be: the pane minus the box border
+// (2) and its horizontal padding (4).
+func (m *Model) innerWidth() int {
+	w := m.width - 6
+	if w < 8 {
+		w = 8
+	}
+	return w
+}
+
+// modal draws a bordered box that is guaranteed to fit the pane. Every content
+// line is clipped to innerWidth first, so the box can never be wider than the
+// terminal — an oversized box used to spill into the neighbouring pane and
+// blank the tree, because Place cannot shrink what it is given.
+func (m *Model) modal(title string, lines []string) string {
+	inner := m.innerWidth()
+	content := make([]string, 0, len(lines)+1)
+	if title != "" {
+		content = append(content, styleTitle.Render(clip(title, inner)))
+	}
+	content = append(content, lines...)
+
+	box := styleBox.Render(lipgloss.JoinVertical(lipgloss.Left, content...))
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// wrap breaks plain text on spaces to fit width.
+func wrap(s string, width int) []string {
+	if width < 1 {
+		return []string{s}
+	}
+	var out []string
+	line := ""
+	for _, word := range strings.Fields(s) {
+		switch {
+		case line == "":
+			line = word
+		case len(line)+1+len(word) <= width:
+			line += " " + word
+		default:
+			out = append(out, line)
+			line = word
+		}
+	}
+	if line != "" {
+		out = append(out, line)
+	}
+	if len(out) == 0 {
+		out = []string{""}
+	}
+	return out
 }
 
 func kv(k, v string) string {

@@ -459,9 +459,8 @@ func (m *Model) collapse() {
 	}
 }
 
-// updateMouse makes the tree clickable: a click selects, a click on the already
-// selected session connects (so a double-click connects), a click on a group
-// folds it, and the wheel moves the cursor.
+// updateMouse makes the tree clickable: a click on a session opens it, a click
+// on a group header folds it, and the wheel moves the cursor.
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.confirm != nil || m.menu != nil || m.help || m.filtering {
 		return m, nil
@@ -485,7 +484,6 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	row := m.rows[index]
-	wasSelected := index == m.cursor
 	m.setCursor(index)
 
 	if row.Node.Kind == session.KindGroup {
@@ -497,10 +495,11 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.rebuild()
 		return m, nil
 	}
-	if wasSelected {
-		return m, m.beginAttach(row.Node.Session)
+
+	if m.workspace {
+		return m, m.beginShow(row.Node.Session)
 	}
-	return m, nil
+	return m, m.beginAttach(row.Node.Session)
 }
 
 // beginAttach builds the argv, ensures the tmux session exists, and hands back
@@ -614,7 +613,7 @@ func (m *Model) openSessionMenu() {
 			},
 			{
 				label:       "Kill",
-				hint:        "stop the session and its process",
+				hint:        "stop it and its process",
 				destructive: true,
 				run:         func() tea.Cmd { m.askKill(sess); return nil },
 			},
@@ -644,26 +643,26 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 	if !running {
 		items = append(items, menuItem{
 			label: "Connect",
-			hint:  "nothing is running for this session yet",
+			hint:  "nothing running yet",
 			run:   func() tea.Cmd { return m.beginShow(s) },
 		})
 	} else {
 		if pane.Visible() {
 			items = append(items, menuItem{
 				label: "Hide",
-				hint:  "take it off screen, keep it running",
+				hint:  "off screen, still running",
 				run:   func() tea.Cmd { m.hidePane(s, pane); return nil },
 			})
 		} else {
 			items = append(items, menuItem{
 				label: "Show",
-				hint:  "bring it back beside the tree",
+				hint:  "back beside the tree",
 				run:   func() tea.Cmd { return m.beginShow(s) },
 			})
 		}
 		items = append(items, menuItem{
 			label:       "Kill",
-			hint:        "stop the session and its process",
+			hint:        "stop it and its process",
 			destructive: true,
 			run:         func() tea.Cmd { m.askKillPane(s, pane); return nil },
 		})
@@ -671,7 +670,7 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 
 	items = append(items, menuItem{
 		label:       "Shut down workspace",
-		hint:        "stop every session and exit gcrt",
+		hint:        "stop everything and exit",
 		destructive: true,
 		run:         func() tea.Cmd { m.askShutdownWorkspace(); return nil },
 	})

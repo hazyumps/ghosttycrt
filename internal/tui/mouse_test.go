@@ -29,25 +29,15 @@ func wheel(t *testing.T, m *tui.Model, button tea.MouseButton) *tui.Model {
 }
 
 // sample rows: 0 network, 1 switches, 2 core-sw-01, 3 servers, 4 k3s-01
-func TestMouseClickSelectsARow(t *testing.T) {
+func TestMouseClickOnASessionOpensIt(t *testing.T) {
 	m := newModel(t, sample(), 100, 30)
 
 	m, cmd := click(t, m, 5)
-	if cmd != nil {
-		t.Fatal("a first click should select, not connect")
+	if cmd == nil {
+		t.Fatal("clicking a session should open it")
 	}
 	if got := m.SelectedName(); got != "k3s-01" {
 		t.Fatalf("selection = %q, want k3s-01", got)
-	}
-}
-
-func TestMouseClickOnTheSelectedSessionConnects(t *testing.T) {
-	m := newModel(t, sample(), 100, 30)
-
-	m, _ = click(t, m, 5)
-	m, cmd := click(t, m, 5)
-	if cmd == nil {
-		t.Fatal("clicking an already-selected session should connect")
 	}
 }
 

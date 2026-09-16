@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/hazyumps/ghosttycrt/internal/config"
 	"github.com/hazyumps/ghosttycrt/internal/session"
@@ -218,6 +219,42 @@ func TestWorkspaceMenuOffersShutdown(t *testing.T) {
 	if out := m.View(); !strings.Contains(out, "Shut down workspace") {
 		t.Fatalf("menu should offer shutting the workspace down:\n%s", out)
 	}
+}
+
+// An oversized modal used to spill out of the 34-column tree pane and blank the
+// tree, because Place cannot shrink a box it is handed.
+func TestWorkspaceModalsFitTheNarrowPane(t *testing.T) {
+	const width = 34
+	m, _ := workspaceModel(t, width, "sleep 60")
+	m = selectK3s(t, m)
+	m = mustOpen(t, m)
+
+	check := func(state string) {
+		t.Helper()
+		for _, line := range strings.Split(m.View(), "\n") {
+			if w := lipgloss.Width(line); w > width {
+				t.Errorf("%s: line is %d columns in a %d-column pane: %q", state, w, width, line)
+			}
+		}
+	}
+
+	check("tree")
+
+	m, _ = press(t, m, "d")
+	check("menu")
+	m = pressKey(t, m, tea.KeyEscape)
+
+	m, _ = press(t, m, "?")
+	check("help")
+	m = pressKey(t, m, tea.KeyEscape)
+
+	m, _ = press(t, m, "d")
+	m, _ = press(t, m, "jj")
+	m = pressKey(t, m, tea.KeyEnter)
+	if out := m.View(); !strings.Contains(out, "Shut down the workspace?") {
+		t.Fatalf("expected the shutdown confirmation:\n%s", out)
+	}
+	check("confirm")
 }
 
 func TestWorkspaceShutdownConfirmsAndKillsEverything(t *testing.T) {

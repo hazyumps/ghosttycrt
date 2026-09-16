@@ -24,6 +24,10 @@ func main() {
 
 func run() int {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "import" {
+		return runImport(args[1:])
+	}
+
 	cmd := "tui"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd = args[0]
@@ -39,7 +43,7 @@ func run() int {
 	var showVersion bool
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: gcrt [tui|check] [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "usage: gcrt [tui|check|import] [flags]\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

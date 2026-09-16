@@ -1,31 +1,41 @@
 # HANDOFF — ghosttycrt
 
-**Date:** 2026-09-16 (third session)
-**State:** **M1 complete + `workspace` display mode (D6).** Usable daily for SSH.
-Committed: M0 spec, M1 connect, tree mouse+viewport. Workspace commit follows.
+**Date:** 2026-09-16 (fourth session)
+**State:** **M1 + `workspace` mode + SecureCRT import.** Patrick's 120 real
+sessions are imported and in daily use.
 
 ## Resume in one line
 
-Use it for a week, then pick **M2 (serial + CRUD)** or **M3 (logging)** —
-the spec says they are independent and that living in M1 should decide.
+The tree now holds 120 real sessions; **47 of them had a SecureCRT password and
+have no credential ref yet** (`gcrt import securecrt` lists them). M4
+(credentials) is what makes those one-keystroke; M2 (serial + CRUD) is what makes
+the tree editable without hand-editing TOML; M3 (logging) is what makes it feel
+like SecureCRT.
 
-## What landed in the workspace session
+## What landed in the import session
 
 | Area | Path |
 |---|---|
-| workspace tmux layer: `Panes/Show/Hide/Focus/KillPane/Retile/Configure/DetachSelf/ShutdownWorkspace` | `internal/tmux/workspace.go` |
-| bootstrap: `gcrt` re-execs itself into `gscrt/workspace` via `new-session -A` | `cmd/gcrt/main.go` |
-| `workspace` display mode + `workspace_tree_width` | `internal/config/` |
-| mode-aware glyphs, menu, `q`→detach, shutdown, compact chrome | `internal/tui/` |
-
-Also landed just before it: tree scrolling (the cursor used to walk off screen
-on a long tree) and mouse support — click selects, click again connects, click a
-group header folds it, wheel scrolls.
+| SecureCRT `.ini` parser, field mapping, deterministic ids, slug dedup | `internal/importers/securecrt/` |
+| `gcrt import securecrt [--from DIR] [--write]`, dry run by default | `cmd/gcrt/import.go` |
+| TOML emitter for `sessions.toml` (round-trip tested) | `internal/session/write.go` |
 
 ```
-go build ./... && go test ./...     # integration tests use private tmux sockets
-gcrt                                 # reads ~/.config/ghosttycrt/
+gcrt import securecrt            # dry run: what would change
+gcrt import securecrt --write    # backs the old file up, then writes atomically
 ```
+
+Reads SecureCRT's native per-session `.ini` store (not an XML export). Folder
+path → `group`; `Hostname`/`Username`/`[SSH2] Port` → `ssh`. `__FolderData__.ini`
+and `Default.ini` are skipped. Passwords are never imported; sessions with
+`Session Password Saved = 1` are listed as needing a ref. Ids are UUIDv5 over the
+session's path, so re-importing is stable and never orphans state or logs.
+
+Patrick's config: 120 sessions (119 ssh, 1 local shell), 47 flagged for a
+credential ref, 1 with a live login script (`new-core-console-use this one`).
+The previous hand-written `trainee-48` was dropped — SecureCRT's `eve-48.ini`
+already covers `10.5.5.248`. Backup at
+`~/.config/ghosttycrt/sessions.toml.bak-20260916-170036`.
 
 ## How `workspace` works (D6)
 
@@ -64,6 +74,10 @@ Patrick's `~/.config/ghosttycrt/config.toml` is set to `workspace`, tree width 3
    action in the `d` menu, behind a confirmation.
 
 ## Next: M2 or M3 (from `spec/09-milestones.md`)
+
+**M4 — credentials** is the one with a concrete list waiting: 47 imported
+sessions had a SecureCRT password and have no credential ref. Until M4 they
+connect on the agent/identity path only.
 
 **M2 — serial + session CRUD.** picocom backend + screen fallback, framing,
 missing-device check with `/dev/tty.*` candidates, `remain-on-exit` for serial,

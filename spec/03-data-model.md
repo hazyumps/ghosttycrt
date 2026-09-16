@@ -156,12 +156,38 @@ hosts (`Host *`, `Host 10.1.3.*`) are skipped and reported. Groups come from
 nested `Include` paths or a configured mapping; default is one group named
 `ssh-config`.
 
-**SecureCRT XML export** — SecureCRT exports sessions as XML. Map `Hostname`,
-`Username`, `Port`, `SessionPath` (to `group`), and the serial fields; flag every
-session whose protocol is not ssh/serial/telnet as unsupported. Password fields
-in the export are **discarded** and replaced with `provider = "none"` plus a
-warning listing which sessions need a credential ref — passwords from the
-SecureCRT export are never imported into the new config.
+**SecureCRT** — SecureCRT keeps one `.ini` per session under
+`~/Library/Application Support/VanDyke/SecureCRT/Config/Sessions`, mirroring the
+folder tree as directories, so the folder path *is* the group. This is the real
+on-disk store and is what `gcrt import securecrt` reads; the XML export format is
+not needed. Lines are `S:"Key"=text`, `D:"Key"=hex` or `B:"Key"=hex`, with hex
+continuation lines for binary blobs — the parser must skip continuations or it
+will lose the key that follows.
+
+Mapped fields, confirmed against a real 121-session config (2026-09-16):
+
+| SecureCRT | gcrt |
+|---|---|
+| `S:"Hostname"` | `ssh.host` (or `serial`/`telnet` equivalent) |
+| `S:"Username"` | `ssh.user` |
+| `D:"[SSH2] Port"` | `ssh.port` — a **hex** dword, `00000016` is 22 |
+| `S:"Protocol Name"` | `transport` (`SSH2`, `Serial`, `Telnet`, `Local Shell`) |
+| folder path | `group` |
+| file name minus `.ini` | `name` |
+| `S:"Firewall Name"` | `ssh.jump`, when it is not `None` |
+
+`__FolderData__.ini` and `Default.ini` are folder metadata and the template, not
+sessions, and are skipped.
+
+Password fields are **never** imported — SecureCRT stores them encrypted, but
+the value would not survive the trip to SSH anyway. A session whose
+`D:"Session Password Saved"` is 1 is reported so a credential reference can be
+added by hand. `Use Login Script` sessions are reported too: their login macro
+is not imported, and `on_connect` is deferred past MVP (Q3).
+
+Session ids are a UUIDv5 hash of the session's path relative to the Sessions
+directory, so re-importing the same config yields the same ids and never orphans
+state or logs.
 
 Both importers write to a staging file and print a diff before committing.
 

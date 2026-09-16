@@ -19,11 +19,17 @@ and logging are next ([`spec/09-milestones.md`](spec/09-milestones.md)).
 ```
 go build ./cmd/gcrt          # or: go run ./cmd/gcrt tui
 go run ./cmd/gcrt check      # validate config + sessions, no TUI
+go run ./cmd/gcrt import securecrt           # dry run
+go run ./cmd/gcrt import securecrt --write   # replaces sessions.toml, after a backup
 go test ./...
 ```
 
 `gcrt` reads `~/.config/ghosttycrt/{config.toml,sessions.toml}`. Point it
 elsewhere while trying it out with `-config-dir examples`.
+
+`gcrt import securecrt` converts an existing SecureCRT configuration — its
+folder tree becomes the group tree, and stored passwords are never imported
+(sessions that had one are listed so you can add a credential reference).
 
 ## The shape of it
 

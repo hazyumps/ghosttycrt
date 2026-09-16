@@ -84,12 +84,14 @@ tab-native neighbours on the Mac, and Linux is unaffected.
 
 ## M6 — migration + hardening (a few days)
 
-- [ ] SecureCRT XML importer (passwords discarded, refs flagged)
-- [ ] `gcrt check` command
+- [x] SecureCRT importer (passwords discarded, refs flagged) — **landed
+      2026-09-16** as `gcrt import securecrt`, reading the native per-session
+      `.ini` store rather than an XML export. 120 sessions imported.
+- [x] `gcrt check` command — landed with M0
 - [ ] golden/teatest coverage for the UI; integration tests on a private tmux
       socket (`tmux -L gcrt-test`)
 - [ ] README quickstart per platform; the `brew`/`apt` lines
-- [ ] Linux acceptance run (`08-acceptance.md` AC-29..AC-32)
+- [ ] Linux acceptance run (`08-acceptance.md` AC-29..AC-32`)
 - [ ] decide Q1–Q5 from `spec/README.md` and fold the answers back into the spec
 
 Done when: SecureCRT gets deleted.

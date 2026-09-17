@@ -28,8 +28,9 @@ var (
 	styleWarn   = lipgloss.NewStyle().Foreground(colWarn)
 	styleErr    = lipgloss.NewStyle().Foreground(colErr)
 	styleCursor = lipgloss.NewStyle().Foreground(colText).Background(lipgloss.AdaptiveColor{Light: "#e0d6f5", Dark: "#3a2f52"})
-	styleHover  = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#f0ecfa", Dark: "#2b2b40"})
-	styleBarHi  = lipgloss.NewStyle().Foreground(colAccent).Background(lipgloss.AdaptiveColor{Light: "#f0ecfa", Dark: "#2b2b40"})
+	colHover    = lipgloss.AdaptiveColor{Light: "#e4dbf7", Dark: "#3d3d5c"}
+	styleHover  = lipgloss.NewStyle().Background(colHover)
+	styleBarHi  = lipgloss.NewStyle().Foreground(colAccent).Background(colHover).Bold(true)
 	styleLabel  = lipgloss.NewStyle().Foreground(colDim).Width(13)
 	styleBox    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
 	os.Exit(run())
@@ -115,6 +115,7 @@ func check(paths config.Paths, file *session.File, problems session.Problems) in
 }
 
 func browse(cfg *config.Config, paths config.Paths, file *session.File, problems session.Problems, client *tmux.Client) int {
+	tui.Version = version
 	m := tui.New(cfg, file, paths, problems, client)
 	if tmux.InWorkspace() {
 		m.EnableWorkspace(os.Getenv("TMUX_PANE"))

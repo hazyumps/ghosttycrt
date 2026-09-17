@@ -349,6 +349,30 @@ func (c *Client) KillPane(paneID string) error {
 	return err
 }
 
+// TreeVersion is the version of the gcrt that started this workspace, recorded
+// on the tree pane. Empty when there is no marker.
+func (c *Client) TreeVersion() string {
+	if c.TreePane == "" {
+		return ""
+	}
+	out, err := c.run("show-options", "-p", "-t", c.TreePane, "@gcrt_version")
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(out)
+	if len(fields) < 2 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+func (c *Client) SetTreeVersion(v string) error {
+	if c.TreePane == "" {
+		return nil
+	}
+	return c.runQuiet("set-option", "-p", "-t", c.TreePane, "@gcrt_version", v)
+}
+
 // ToggleTreeZoom makes the tree pane fill the window, and back again. Used for
 // views that need more width than a sidebar gives them — the session form. tmux
 // resizes the pane, so the TUI is told about the new size and redraws.

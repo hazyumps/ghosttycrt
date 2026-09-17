@@ -124,6 +124,15 @@ func (m *Model) EnableWorkspace(paneID string) {
 
 	m.client.TreePane = paneID
 	m.client.SetLayout(m.layout())
+
+	// A workspace outlives the binary that started it: re-running gcrt attaches
+	// to the existing tree process, so an upgrade silently does nothing until
+	// the workspace is shut down. Say so rather than leave it a mystery.
+	if prev := m.client.TreeVersion(); prev != "" && prev != Version {
+		m.status = "this workspace is running gcrt " + prev +
+			" — shut it down (d → Shut down workspace) to move to " + Version
+	}
+	_ = m.client.SetTreeVersion(Version)
 	if err := m.client.Configure(m.treeWidth, paneID); err != nil {
 		m.errMsg = err.Error()
 	}
@@ -1081,6 +1090,10 @@ func (m *Model) askForget(s *session.Session) {
 		yes: func() tea.Cmd { m.forget(s); return nil },
 	}
 }
+
+// Version is the running binary's version, set by main. It is recorded on the
+// tree pane so a stale workspace can be told apart from a fresh one.
+var Version = "dev"
 
 // SelectedName is the highlighted row's label, empty on an empty tree.
 func (m *Model) SelectedName() string {

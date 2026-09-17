@@ -48,10 +48,10 @@ func hexDword(n int) string {
 
 func TestParseMapsHostUserPortAndGroup(t *testing.T) {
 	dir := fixture(t, map[string]string{
-		"Northstar (NST)/jumpboxes/jumpbox-04.ini": sshSession("10.88.1.104", "student", 22),
-		"fernlabs.net/localhost.ini":               `S:"Protocol Name"=Local Shell` + "\n",
+		"Acme/dc1/edge-sw-04.ini": sshSession("192.0.2.104", "operator", 22),
+		"Acme/localhost.ini":               `S:"Protocol Name"=Local Shell` + "\n",
 		"Default.ini":                              sshSession("ignored", "ignored", 22),
-		"fernlabs.net/__FolderData__.ini":          `S:"Hostname"=ignored` + "\n",
+		"Acme/__FolderData__.ini":          `S:"Hostname"=ignored` + "\n",
 	})
 
 	sessions, report, err := securecrt.Parse(dir)
@@ -71,17 +71,17 @@ func TestParseMapsHostUserPortAndGroup(t *testing.T) {
 		byName[s.Name] = s
 	}
 
-	box := byName["jumpbox-04"]
+	box := byName["edge-sw-04"]
 	if box.Transport != session.TransportSSH {
 		t.Fatalf("transport = %q", box.Transport)
 	}
-	if box.Group != "Northstar (NST)/jumpboxes" {
+	if box.Group != "Acme/dc1" {
 		t.Fatalf("group = %q, want the folder path", box.Group)
 	}
-	if box.SSH == nil || box.SSH.Host != "10.88.1.104" || box.SSH.User != "student" || box.SSH.Port != 22 {
+	if box.SSH == nil || box.SSH.Host != "192.0.2.104" || box.SSH.User != "operator" || box.SSH.Port != 22 {
 		t.Fatalf("ssh block = %+v", box.SSH)
 	}
-	if box.Slug != "jumpbox-04" {
+	if box.Slug != "edge-sw-04" {
 		t.Fatalf("slug = %q", box.Slug)
 	}
 
@@ -89,7 +89,7 @@ func TestParseMapsHostUserPortAndGroup(t *testing.T) {
 	if local.Transport != session.TransportLocal {
 		t.Fatalf("Local Shell should map to the local transport, got %q", local.Transport)
 	}
-	if local.Group != "fernlabs.net" {
+	if local.Group != "Acme" {
 		t.Fatalf("group = %q", local.Group)
 	}
 }

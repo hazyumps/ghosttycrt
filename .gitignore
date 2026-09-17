@@ -11,3 +11,14 @@
 
 # never commit local runtime state or logs
 *.log
+
+# your own sessions and config never belong in the repo — they carry hostnames
+# and usernames. They live in ~/.config/ghosttycrt/ by default; these patterns
+# catch anyone running gcrt with -config-dir pointed at the checkout.
+/sessions.toml
+/sessions.toml.bak-*
+/config.toml
+*.bak-*
+
+# local working notes (HANDOFF.md is for the session in progress, not the repo)
+/HANDOFF.md

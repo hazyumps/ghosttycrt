@@ -319,3 +319,140 @@ func TestSlugCollisionsAreAvoided(t *testing.T) {
 		}
 	}
 }
+
+// ------------------------------------------------------------- group picker
+
+// fieldIndex is where a labelled field sits in the form.
+func formCursorRow(t *testing.T, m *tui.Model) int {
+	t.Helper()
+	for i, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(stripANSI(line), "▸") {
+			return i
+		}
+	}
+	t.Fatalf("no field is focused:\n%s", m.View())
+	return -1
+}
+
+func TestGroupFieldOffersTheExistingGroups(t *testing.T) {
+	m, _ := crudModel(t)
+	m, _ = press(t, m, "n")
+
+	m = pressKey(t, m, tea.KeyDown)  // onto group
+	m = pressKey(t, m, tea.KeyEnter) // open the picker
+
+	out := m.View()
+	for _, want := range []string{"network/switches", "servers", "(root)", "new group…"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the picker should offer %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestPickingAGroupAndSaving(t *testing.T) {
+	m, path := crudModel(t)
+
+	m, _ = press(t, m, "n")
+	m, _ = press(t, m, "grp-01")
+	m = pressKey(t, m, tea.KeyEnter)
+	m = pressKey(t, m, tea.KeyDown)  // group
+	m = pressKey(t, m, tea.KeyEnter) // open the picker
+
+	m, _ = clickAt(t, m, 10, rowOf(t, m, "servers"))
+	for i := 0; i < 5; i++ {
+		m = pressKey(t, m, tea.KeyDown) // group -> host
+	}
+	m, _ = press(t, m, "192.0.2.77")
+	m = pressKey(t, m, tea.KeyEnter)
+	m = ctrlS(t, m)
+
+	got, ok := byName(reload(t, path), "grp-01")
+	if !ok {
+		t.Fatal("grp-01 was not saved")
+	}
+	if got.Group != "servers" {
+		t.Fatalf("group = %q, want servers", got.Group)
+	}
+}
+
+func TestThePickerCanTypeANewGroup(t *testing.T) {
+	m, path := crudModel(t)
+
+	m, _ = press(t, m, "n")
+	m, _ = press(t, m, "grp-02")
+	m = pressKey(t, m, tea.KeyEnter)
+	m = pressKey(t, m, tea.KeyDown)
+	m = pressKey(t, m, tea.KeyEnter) // open the picker
+	m, _ = press(t, m, "lab/new")    // typing starts a path that does not exist
+	m = pressKey(t, m, tea.KeyEnter)
+
+	for i := 0; i < 5; i++ {
+		m = pressKey(t, m, tea.KeyDown)
+	}
+	m, _ = press(t, m, "192.0.2.78")
+	m = pressKey(t, m, tea.KeyEnter)
+	m = ctrlS(t, m)
+
+	got, ok := byName(reload(t, path), "grp-02")
+	if !ok {
+		t.Fatal("grp-02 was not saved")
+	}
+	if got.Group != "lab/new" {
+		t.Fatalf("group = %q, want lab/new", got.Group)
+	}
+}
+
+// ---------------------------------------------------------------- form mouse
+
+func TestMouseSelectsAndOpensAField(t *testing.T) {
+	m, _ := crudModel(t)
+	m, _ = press(t, m, "n")
+
+	desc := rowOf(t, m, "description")
+	m, _ = clickAt(t, m, 10, desc)
+	if got := formCursorRow(t, m); got != desc {
+		t.Fatalf("a click should select the field on that row (%d), cursor is on %d", desc, got)
+	}
+
+	// A second click opens it for typing.
+	m, _ = clickAt(t, m, 10, desc)
+	m, _ = press(t, m, "note-to-self")
+	if out := m.View(); !strings.Contains(out, "note-to-self") {
+		t.Fatalf("a second click should start editing:\n%s", out)
+	}
+}
+
+func TestMousePicksADropdownEntry(t *testing.T) {
+	m, _ := crudModel(t)
+	m, _ = press(t, m, "n")
+
+	m = pressKey(t, m, tea.KeyDown)
+	m = pressKey(t, m, tea.KeyEnter) // open the picker
+	m, _ = clickAt(t, m, 10, rowOf(t, m, "network/switches"))
+
+	if out := m.View(); !strings.Contains(out, "network/switches") {
+		t.Fatalf("the chosen group should be in the field:\n%s", out)
+	}
+	// The list closes once something is chosen.
+	if out := m.View(); strings.Contains(out, "new group…") {
+		t.Errorf("the picker should close after a choice:\n%s", out)
+	}
+}
+
+func TestWheelMovesBetweenFields(t *testing.T) {
+	m, _ := crudModel(t)
+	m, _ = press(t, m, "n")
+
+	before := formCursorRow(t, m)
+	updated, _ := m.Update(tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonWheelDown,
+		X:      10,
+		Y:      5,
+	})
+	m = updated.(*tui.Model)
+
+	if after := formCursorRow(t, m); after == before {
+		t.Fatalf("the wheel should move the cursor; still on row %d", after)
+	}
+}

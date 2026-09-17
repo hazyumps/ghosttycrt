@@ -551,7 +551,17 @@ func (m *Model) collapse() {
 // updateMouse makes the tree clickable: a click on a session opens it, a click
 // on a group header folds it, and the wheel moves the cursor.
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.form != nil || m.confirm != nil || m.filtering {
+	if m.form != nil {
+		save, closed, _ := m.form.mouse(msg)
+		if save {
+			return m, m.saveForm()
+		}
+		if closed {
+			m.closeForm()
+		}
+		return m, nil
+	}
+	if m.confirm != nil || m.filtering {
 		return m, nil
 	}
 
@@ -901,6 +911,25 @@ func (m *Model) askShutdownWorkspace() {
 
 // ---------------------------------------------------------------- sessions
 
+// groupPaths lists every group that exists, including the parents of nested
+// ones, so the picker offers the shape of the tree rather than a flat list of
+// leaf paths.
+func (m *Model) groupPaths() []string {
+	seen := map[string]bool{}
+	for _, s := range m.file.Session {
+		parts := s.GroupPath()
+		for i := range parts {
+			seen[strings.Join(parts[:i+1], "/")] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for g := range seen {
+		out = append(out, g)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (m *Model) providers() []string {
 	out := make([]string, 0, len(m.cfg.Credentials.Providers))
 	for name := range m.cfg.Credentials.Providers {
@@ -926,7 +955,7 @@ func (m *Model) openForm(s *session.Session, isNew bool) {
 	if m.form != nil {
 		return
 	}
-	m.form = newForm(m.cfg, s, isNew)
+	m.form = newForm(m.cfg, s, isNew, m.groupPaths())
 	// A sidebar tree pane is too narrow to edit in, so borrow the window.
 	if m.workspace {
 		_ = m.client.ToggleTreeZoom()

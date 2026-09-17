@@ -21,7 +21,11 @@ const (
 	fieldText fieldKind = iota
 	fieldNumber
 	fieldCycle
+	fieldGroup
 )
+
+// newGroupSentinel is the dropdown entry that means "type a path instead".
+const newGroupSentinel = "\x00new-group"
 
 type formSpec struct {
 	key     string
@@ -48,6 +52,15 @@ type form struct {
 
 	transportChoices []string
 	providerChoices  []string
+
+	// the group picker
+	groupChoices []string
+	dropdown     bool
+	dropIndex    int
+
+	// screen rows recorded during the last render, for mouse hit-testing
+	rows     []int
+	dropRows []int
 }
 
 var (
@@ -65,13 +78,17 @@ func onOffValue(v bool) string {
 }
 
 // newForm builds the field list for a session, or a blank one when s is nil.
-func newForm(cfg *config.Config, s *session.Session, isNew bool) *form {
+func newForm(cfg *config.Config, s *session.Session, isNew bool, groups []string) *form {
 	f := &form{
 		values: map[string]string{},
 		isNew:  isNew,
 	}
 	f.transportChoices = transportChoices
 	f.providerChoices = append([]string{"none"}, providerNames(cfg)...)
+
+	// Existing groups first, then the root, then a way to make a new one.
+	f.groupChoices = append([]string{}, groups...)
+	f.groupChoices = append(f.groupChoices, "", newGroupSentinel)
 
 	if s != nil {
 		f.id = s.ID
@@ -163,7 +180,7 @@ func (f *form) rebuild() {
 
 	specs := []formSpec{
 		{key: "name", label: "name", kind: fieldText},
-		{key: "group", label: "group", kind: fieldText},
+		{key: "group", label: "group", kind: fieldGroup},
 		{key: "tags", label: "tags", kind: fieldText},
 		{key: "description", label: "description", kind: fieldText},
 		{key: "pinned", label: "pinned", kind: fieldCycle, choices: onOff},
@@ -248,14 +265,47 @@ func (f *form) move(delta int) {
 	f.index = (f.index + delta + len(f.specs)) % len(f.specs)
 }
 
-func (f *form) startEdit() {
+// activate opens the focused field: the group picker for a group, the next
+// choice for an enum, the text buffer for anything else.
+func (f *form) activate() {
 	spec := f.current()
-	if spec.kind == fieldCycle {
+	switch spec.kind {
+	case fieldCycle:
 		f.cycle(1)
+	case fieldGroup:
+		f.dropdown = true
+		f.dropIndex = f.choiceIndex(f.values[spec.key])
+	default:
+		f.editing = true
+		f.buffer = f.values[spec.key]
+	}
+}
+
+func (f *form) choiceIndex(value string) int {
+	for i, c := range f.groupChoices {
+		if c == value {
+			return i
+		}
+	}
+	return 0
+}
+
+// pickChoice applies a dropdown entry. The sentinel switches to typing, so a
+// path that does not exist yet is one keystroke away.
+func (f *form) pickChoice(i int) {
+	if i < 0 || i >= len(f.groupChoices) {
 		return
 	}
-	f.editing = true
-	f.buffer = f.values[spec.key]
+	choice := f.groupChoices[i]
+	f.dropdown = false
+
+	if choice == newGroupSentinel {
+		f.editing = true
+		f.buffer = f.values["group"]
+		return
+	}
+	f.err = ""
+	f.set("group", choice)
 }
 
 func (f *form) commitEdit() {
@@ -282,6 +332,31 @@ func (f *form) commitEdit() {
 // form does not use, so the caller can ignore them rather than act on them.
 func (f *form) update(msg tea.KeyMsg) (save bool, close bool, handled bool) {
 	key := msg.String()
+
+	if f.dropdown {
+		switch key {
+		case "esc":
+			f.dropdown = false
+		case "up":
+			f.dropIndex = (f.dropIndex - 1 + len(f.groupChoices)) % len(f.groupChoices)
+		case "down":
+			f.dropIndex = (f.dropIndex + 1) % len(f.groupChoices)
+		case "pgup":
+			f.dropIndex = 0
+		case "pgdown":
+			f.dropIndex = len(f.groupChoices) - 1
+		case "enter", " ":
+			f.pickChoice(f.dropIndex)
+		default:
+			if msg.Type == tea.KeyRunes {
+				// Typing starts a new path straight away.
+				f.dropdown = false
+				f.editing = true
+				f.buffer = string(msg.Runes)
+			}
+		}
+		return false, false, true
+	}
 
 	if f.editing {
 		switch key {
@@ -318,7 +393,7 @@ func (f *form) update(msg tea.KeyMsg) (save bool, close bool, handled bool) {
 	case "down", "tab":
 		f.move(1)
 	case "enter", " ":
-		f.startEdit()
+		f.activate()
 	case "left":
 		f.cycle(-1)
 	case "right":
@@ -327,9 +402,58 @@ func (f *form) update(msg tea.KeyMsg) (save bool, close bool, handled bool) {
 		f.set(f.current().key, "")
 	default:
 		if msg.Type == tea.KeyRunes {
-			f.startEdit()
+			f.editing = true
 			f.buffer += string(msg.Runes)
 		}
+	}
+	return false, false, true
+}
+
+// mouse handles a click or a wheel while the form is open. A click selects a
+// field; a second click on the selected one opens it, so the picker is at most
+// two clicks away and a click on a dropdown entry chooses it.
+func (f *form) mouse(msg tea.MouseMsg) (save, close, handled bool) {
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		if !f.editing && !f.dropdown {
+			f.move(-1)
+		}
+		return false, false, true
+	case tea.MouseButtonWheelDown:
+		if !f.editing && !f.dropdown {
+			f.move(1)
+		}
+		return false, false, true
+	}
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return false, false, true
+	}
+
+	if f.dropdown {
+		for i, row := range f.dropRows {
+			if msg.Y == row {
+				f.pickChoice(i)
+				return false, false, true
+			}
+		}
+	}
+
+	for i, row := range f.rows {
+		if msg.Y != row {
+			continue
+		}
+		if f.editing {
+			f.commitEdit()
+		}
+		if f.dropdown {
+			f.dropdown = false
+		}
+		already := i == f.index
+		f.index = i
+		if already {
+			f.activate()
+		}
+		return false, false, true
 	}
 	return false, false, true
 }

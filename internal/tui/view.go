@@ -386,22 +386,23 @@ func (m *Model) viewEmpty() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-// viewForm is the session editor: a list of fields, edited in place.
+// viewForm is the session editor: a list of fields, edited in place, with the
+// group picker expanded inline. It records the screen row of every field and
+// dropdown entry so a click can be matched to what was drawn.
 func (m *Model) viewForm() string {
 	f := m.form
 	title := "new session"
-	subtitle := "n"
 	if !f.isNew {
 		title = "edit " + f.original.Name
-		subtitle = "e"
 	}
-	_ = subtitle
 
 	lines := []string{
 		" " + styleTitle.Render(title),
 		" " + styleDim.Render(strings.Repeat("─", max(1, m.width-3))),
 		"",
 	}
+	f.rows = make([]int, len(f.specs))
+	f.dropRows = nil
 
 	section := ""
 	for i, spec := range f.specs {
@@ -410,24 +411,49 @@ func (m *Model) viewForm() string {
 			lines = append(lines, "  "+styleAccent.Render(section))
 		}
 
+		focused := i == f.index
 		cursor := "   "
-		if i == f.index {
+		if focused {
 			cursor = styleTitle.Render(" ▸ ")
 		}
-		label := styleDim.Width(14).Render(spec.label)
 
 		value := f.value(spec.key)
-		if i == f.index && f.editing {
-			value = f.buffer + "█"
-		}
-		style := styleText
+		vstyle := styleText
 		if value == "" {
-			value, style = "—", styleDim
+			value = "—"
+			if spec.kind == fieldGroup {
+				value = "(root)"
+			}
+			vstyle = styleDim
 		}
-		if i == f.index && f.editing {
-			style = styleAccent
+		if focused && f.editing {
+			value, vstyle = f.buffer+"█", styleAccent
+		} else if focused && f.dropdown && spec.kind == fieldGroup {
+			vstyle = styleAccent
 		}
-		lines = append(lines, cursor+label+style.Render(value))
+
+		f.rows[i] = len(lines)
+		lines = append(lines, cursor+styleDim.Width(14).Render(spec.label)+vstyle.Render(value))
+
+		if spec.kind == fieldGroup && f.dropdown {
+			for j, choice := range f.groupChoices {
+				label := choice
+				switch choice {
+				case "":
+					label = "(root)"
+				case newGroupSentinel:
+					label = "new group…"
+				}
+				// A different marker from the field cursor, so an open
+				// picker does not look like it has two.
+				mark, style := "     ", styleDim
+				if j == f.dropIndex {
+					mark, style = "   › ", styleAccent
+				}
+				f.dropRows = append(f.dropRows, len(lines))
+				lines = append(lines, mark+style.Render(label))
+			}
+		}
 	}
 
 	body := make([]string, 0, len(lines))
@@ -435,14 +461,24 @@ func (m *Model) viewForm() string {
 		body = append(body, padRight(clip(l, m.width), m.width))
 	}
 
-	footer := " tab/↑↓ move   enter edit   ←→ cycle   ctrl+s save   esc cancel"
-	if f.editing {
-		footer = " enter accept   ctrl+u clear   esc revert"
+	hint := " tab/↑↓ move   enter edit or choose   ←→ cycle   ctrl+s save   esc cancel"
+	switch {
+	case f.dropdown:
+		hint = " ↑↓ choose   enter accept   esc close   type for a new group"
+	case f.editing:
+		hint = " enter accept   ctrl+u clear   esc revert"
 	}
 	if f.err != "" {
-		footer = " ✗ " + f.err
+		hint = " ✗ " + f.err
 	}
-	return strings.Join(body, "\n") + "\n" + padRight(clip(styleDim.Render(footer), m.width), m.width)
+
+	out := strings.Join(body, "\n") + "\n"
+	// Trim so the hint stays on screen on a short pane.
+	for strings.Count(out, "\n") >= m.height {
+		body = body[:len(body)-1]
+		out = strings.Join(body, "\n") + "\n"
+	}
+	return out + padRight(clip(styleDim.Render(hint), m.width), m.width)
 }
 
 func padRight(s string, width int) string {

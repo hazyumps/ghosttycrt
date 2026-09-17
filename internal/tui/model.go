@@ -276,6 +276,14 @@ func (m *Model) refresh() {
 			}
 			m.panes[p.Slug] = p
 		}
+		// A session that exited, or the last one killed, leaves nowhere to be.
+		// Put the keyboard back on the tree rather than leave it in a pane that
+		// is only showing the empty state.
+		if len(m.panes) == 0 && !m.treeActive {
+			if err := m.client.FocusTree(); err == nil {
+				m.treeActive = true
+			}
+		}
 		return
 	}
 

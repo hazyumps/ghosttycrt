@@ -266,3 +266,41 @@ func TestSidebarSaysWhenTheKeyboardIsElsewhere(t *testing.T) {
 		t.Fatalf("the hint should clear once the tree has focus:\n%s", out)
 	}
 }
+
+// Exiting a session — or killing the last one — leaves nothing to be in, so the
+// keyboard should come back to the tree rather than sit in an empty pane.
+func TestSidebarTakesTheKeyboardBackWhenNothingIsOpen(t *testing.T) {
+	m, client := sidebarModel(t, 120, "exit 0") // the stand-in exits at once
+	m = selectK3s(t, m)
+	m = mustOpen(t, m) // opens the tab, and hands the content pane the keyboard
+
+	refresh := func() {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		m = updated.(*tui.Model)
+	}
+	treeActive := func() bool {
+		out, err := exec.Command("tmux", "-L", client.Socket, "display-message", "-p",
+			"-t", tmux.WorkspaceSession+":"+tmux.TreeWindow+".0", "#{pane_active}").Output()
+		if err != nil {
+			t.Fatalf("display-message: %v", err)
+		}
+		return strings.TrimSpace(string(out)) == "1"
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		refresh()
+		if _, ok := paneForSlug(t, client, "k3s-01"); !ok {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if _, ok := paneForSlug(t, client, "k3s-01"); ok {
+		t.Fatalf("the session never went away: %v", tabWindows(t, client))
+	}
+
+	refresh()
+	if !treeActive() {
+		t.Fatal("the keyboard should be back on the tree once nothing is open")
+	}
+}

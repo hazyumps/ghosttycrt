@@ -425,6 +425,18 @@ func (c *Client) TreeActive() bool {
 	return strings.TrimSpace(out) == "1"
 }
 
+// FocusTree puts the keyboard back on the tree: the pane in the layouts where
+// the tree shares a window, the window itself in the tabs layout.
+func (c *Client) FocusTree() error {
+	if c.TreePane == "" {
+		return nil
+	}
+	if c.layout() == LayoutTabs {
+		return c.runQuiet("select-window", "-t", WorkspaceSession+":"+TreeWindow)
+	}
+	return c.Focus(c.TreePane)
+}
+
 // ToggleTreeZoom makes the tree pane fill the window, and back again. Used for
 // views that need more width than a sidebar gives them — the session form. tmux
 // resizes the pane, so the TUI is told about the new size and redraws.

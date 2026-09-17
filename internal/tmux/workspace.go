@@ -192,6 +192,13 @@ func (c *Client) Configure(treeWidth int, treePaneID string) error {
 		}
 	}
 
+	// The right-click menus are tmux's own and read as noise here: Swap Left,
+	// Respawn, Rename, New After. gcrt answers a right-click on the tree itself,
+	// so the only menu worth having from tmux is on the tab bar.
+	if err := c.silenceTmuxMenus(); err != nil {
+		return err
+	}
+
 	if treePaneID != "" {
 		// A quick way back to the tree from a busy session.
 		args := []string{"bind-key", "-T", "prefix", "t"}
@@ -347,6 +354,25 @@ func (c *Client) KillPane(paneID string) error {
 	}
 	_, err := c.run("kill-pane", "-t", paneID)
 	return err
+}
+
+// silenceTmuxMenus stops the outer server offering its own right-click menus.
+// In the sidebar the same click is seen by two servers, and two menus fighting
+// is what made a right-click on a tab look like it would not stay open.
+func (c *Client) silenceTmuxMenus() error {
+	// Including the Meta-held variants, which tmux binds separately.
+	for _, key := range []string{
+		"MouseDown3Pane", "MouseDown3Status",
+		"MouseDown3StatusLeft", "MouseDown3StatusRight",
+		"M-MouseDown3Pane", "M-MouseDown3Status",
+		"M-MouseDown3StatusLeft", "M-MouseDown3StatusRight",
+	} {
+		// A key that was never bound is not worth stopping for.
+		if _, err := c.run("unbind-key", "-T", "root", key); err != nil {
+			continue
+		}
+	}
+	return nil
 }
 
 // TreeVersion is the version of the gcrt that started this workspace, recorded

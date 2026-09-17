@@ -156,6 +156,28 @@ func (c *Client) configureTabServer() error {
 			return err
 		}
 	}
+
+	// Right-clicking a tab should offer the two things worth doing to it, not
+	// tmux's window menu. The menu keeps its own target, so the actions need no
+	// explicit -t.
+	menu := []string{"bind-key", "-T", "root", "MouseDown3Status",
+		"display-menu", "-T", "#[align=centre]#{window_name}", "-t", "=", "-x", "W", "-y", "W",
+		"Switch to it", "s", "{ select-window }",
+		"Kill", "X", "{ kill-window }",
+	}
+	if _, err := tabs.run(menu...); err != nil {
+		return err
+	}
+	// Leave the left/right status zones to the same menu rather than tmux's
+	// session-and-client one.
+	for _, key := range []string{
+		"MouseDown3StatusLeft", "MouseDown3StatusRight",
+		"M-MouseDown3StatusLeft", "M-MouseDown3StatusRight",
+	} {
+		if _, err := tabs.run("unbind-key", "-T", "root", key); err != nil {
+			continue
+		}
+	}
 	return nil
 }
 

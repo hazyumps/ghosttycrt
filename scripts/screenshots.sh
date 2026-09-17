@@ -155,7 +155,10 @@ shot menu "$work/wide" '\r\002t\033[<2;10;3M' 'gcrt — right-click a session'
 # 3. The idle screen, before anything is open.
 shot idle "$work/roomy" '' 'gcrt — nothing open yet'
 
-# 4. Every key and command, from the menu bar's Help.
+# 4. The session form, which borrows the whole window to edit in.
+shot form "$work/wide" 'n' 'gcrt — new session'
+
+# 5. Every key and command, from the menu bar's Help.
 shot help "$work/roomy" '?' 'gcrt — keys and commands'
 
 echo "wrote $(ls "$out"/*.png | wc -l | tr -d ' ') screenshots to $out"

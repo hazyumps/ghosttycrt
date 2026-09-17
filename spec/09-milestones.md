@@ -35,8 +35,8 @@ to M2, which is where atomic `sessions.toml` writes live.
 - [ ] picocom backend, screen fallback, framing options
 - [ ] missing-device check with `/dev/tty.*` candidates
 - [ ] `remain-on-exit` for serial panes
-- [ ] form view: new/edit/duplicate/delete/pin
-- [ ] atomic `sessions.toml` writes
+- [x] form view: new/edit/duplicate/delete/pin — **landed 2026-09-16**
+- [x] atomic `sessions.toml` writes — `session.SaveFile`, temp file then rename
 - [ ] `~/.ssh/config` importer with preview diff
 - [ ] legacy `TERM=xterm-256color` toggle for old gear
 

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -140,51 +138,16 @@ func diff(current, imported []session.Session) (added, kept int, dropped []strin
 	return added, kept, dropped
 }
 
-// writeSessions writes atomically: a temp file in the same directory, the old
-// file copied aside, then a rename. A crash mid-write cannot corrupt the config.
+// writeSessions writes atomically, keeping a copy of whatever was there: an
+// import replaces the whole file, so the previous one is worth rescuing.
 func writeSessions(path string, sessions []session.Session) (backup string, err error) {
-	var buf bytes.Buffer
-	if err := session.Write(&buf, sessions); err != nil {
-		return "", err
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-
-	tmp, err := os.CreateTemp(dir, ".sessions-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	tmpName := tmp.Name()
-	defer func() {
-		if err != nil {
-			os.Remove(tmpName)
-		}
-	}()
-
-	if _, err = tmp.Write(buf.Bytes()); err != nil {
-		tmp.Close()
-		return "", err
-	}
-	if err = tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return "", err
-	}
-	if err = tmp.Close(); err != nil {
-		return "", err
-	}
-
 	if _, statErr := os.Stat(path); statErr == nil {
 		backup = fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
-		if err = copyFile(path, backup); err != nil {
+		if err := copyFile(path, backup); err != nil {
 			return "", err
 		}
 	}
-
-	err = os.Rename(tmpName, path)
-	return backup, err
+	return backup, session.SaveFile(path, sessions)
 }
 
 func copyFile(src, dst string) error {

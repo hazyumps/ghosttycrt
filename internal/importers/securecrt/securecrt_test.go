@@ -49,9 +49,9 @@ func hexDword(n int) string {
 func TestParseMapsHostUserPortAndGroup(t *testing.T) {
 	dir := fixture(t, map[string]string{
 		"Acme/dc1/edge-sw-04.ini": sshSession("192.0.2.104", "operator", 22),
-		"Acme/localhost.ini":               `S:"Protocol Name"=Local Shell` + "\n",
-		"Default.ini":                              sshSession("ignored", "ignored", 22),
-		"Acme/__FolderData__.ini":          `S:"Hostname"=ignored` + "\n",
+		"Acme/localhost.ini":      `S:"Protocol Name"=Local Shell` + "\n",
+		"Default.ini":             sshSession("ignored", "ignored", 22),
+		"Acme/__FolderData__.ini": `S:"Hostname"=ignored` + "\n",
 	})
 
 	sessions, report, err := securecrt.Parse(dir)

@@ -37,6 +37,8 @@ func (m *Model) View() string {
 		return "loading…"
 	}
 	switch {
+	case m.form != nil:
+		return m.viewForm()
 	case m.confirm != nil:
 		return m.viewConfirm()
 	case m.menu != nil:
@@ -384,6 +386,73 @@ func (m *Model) viewEmpty() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
+// viewForm is the session editor: a list of fields, edited in place.
+func (m *Model) viewForm() string {
+	f := m.form
+	title := "new session"
+	subtitle := "n"
+	if !f.isNew {
+		title = "edit " + f.original.Name
+		subtitle = "e"
+	}
+	_ = subtitle
+
+	lines := []string{
+		" " + styleTitle.Render(title),
+		" " + styleDim.Render(strings.Repeat("─", max(1, m.width-3))),
+		"",
+	}
+
+	section := ""
+	for i, spec := range f.specs {
+		if spec.section != "" && spec.section != section {
+			section = spec.section
+			lines = append(lines, "  "+styleAccent.Render(section))
+		}
+
+		cursor := "   "
+		if i == f.index {
+			cursor = styleTitle.Render(" ▸ ")
+		}
+		label := styleDim.Width(14).Render(spec.label)
+
+		value := f.value(spec.key)
+		if i == f.index && f.editing {
+			value = f.buffer + "█"
+		}
+		style := styleText
+		if value == "" {
+			value, style = "—", styleDim
+		}
+		if i == f.index && f.editing {
+			style = styleAccent
+		}
+		lines = append(lines, cursor+label+style.Render(value))
+	}
+
+	body := make([]string, 0, len(lines))
+	for _, l := range lines {
+		body = append(body, padRight(clip(l, m.width), m.width))
+	}
+
+	footer := " tab/↑↓ move   enter edit   ←→ cycle   ctrl+s save   esc cancel"
+	if f.editing {
+		footer = " enter accept   ctrl+u clear   esc revert"
+	}
+	if f.err != "" {
+		footer = " ✗ " + f.err
+	}
+	return strings.Join(body, "\n") + "\n" + padRight(clip(styleDim.Render(footer), m.width), m.width)
+}
+
+func padRight(s string, width int) string {
+	gap := width - lipgloss.Width(s)
+	if gap <= 0 {
+		return s
+	}
+	return s + strings.Repeat(" ", gap)
+}
+
 func (m *Model) viewMenu() string {
 	inner := m.innerWidth()
 	lines := []string{styleDim.Render(clip("choose an action", inner))}
@@ -447,11 +516,17 @@ func (m *Model) helpSections() []helpSection {
 		}},
 		{title: "Sessions", rows: [][2]string{
 			{"enter", "connect (attach-or-create)"},
-			{"d", "detach, hide or kill — a menu"},
+			{"n / e / c", "new / edit / duplicate"},
+			{"space", "pin or unpin"},
+			{"d", "detach, hide, kill or forget — a menu"},
 			{"r", "refresh tmux state"},
-			{"n / e / c", "new / edit / duplicate — M2, not yet"},
-			{"space", "pin or unpin — M2, not yet"},
-			{"l / L", "today's log / log browser — M3, not yet"},
+		}},
+		{title: "The session form", rows: [][2]string{
+			{"tab/↑↓", "move between fields"},
+			{"enter", "edit a field, or accept it"},
+			{"← →", "cycle a choice (transport, logging, provider)"},
+			{"ctrl+s", "save — the whole file is written atomically"},
+			{"esc", "cancel, or revert the field being edited"},
 		}},
 		{title: "Mouse", rows: [][2]string{
 			{"click a host", "open it"},

@@ -13,8 +13,10 @@ you the terminal; the session outlives `gcrt` and Ghostty. With
 every connection gets its own tab (`workspace_layout = "tabs"`), or the tree
 stays pinned on the left with the tabs beside it (`"sidebar"`), or connections
 tile as panes when you want several visible at once (`"split"`). The top row is a clickable menu bar; `?` or the
-`Help` item opens the full key and command list. Serial, CRUD, and logging are
-next ([`spec/09-milestones.md`](spec/09-milestones.md)).
+`Help` item opens the full key and command list. Sessions can be created,
+edited, duplicated, pinned and removed from the UI, with atomic writes to
+`sessions.toml`. Serial and logging are next
+([`spec/09-milestones.md`](spec/09-milestones.md)).
 
 ## Screenshots
 
@@ -25,6 +27,10 @@ The sidebar layout — the tree stays put, connections are tabs beside it:
 Right-clicking a session opens its menu, where it can be closed:
 
 ![right-clicking a session](docs/img/menu.png)
+
+Sessions are added and edited in place; saving writes the file atomically:
+
+![the session form](docs/img/form.png)
 
 `?` brings up every key and command:
 

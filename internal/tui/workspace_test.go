@@ -261,7 +261,7 @@ func TestWorkspaceModalsFitTheNarrowPane(t *testing.T) {
 	m = pressKey(t, m, tea.KeyEscape)
 
 	m, _ = press(t, m, "d")
-	m, _ = press(t, m, "jj")
+	m = selectLastMenuItem(t, m)
 	m = pressKey(t, m, tea.KeyEnter)
 	if out := m.View(); !strings.Contains(out, "Shut down the workspace?") {
 		t.Fatalf("expected the shutdown confirmation:\n%s", out)
@@ -275,7 +275,7 @@ func TestWorkspaceShutdownConfirmsAndKillsEverything(t *testing.T) {
 	m = mustOpen(t, m)
 
 	m, _ = press(t, m, "d")
-	m, _ = press(t, m, "jj") // Shut down workspace is the last item
+	m = selectLastMenuItem(t, m) // Shut down workspace is last
 	m = pressKey(t, m, tea.KeyEnter)
 
 	if out := m.View(); !strings.Contains(out, "Shut down the workspace?") {

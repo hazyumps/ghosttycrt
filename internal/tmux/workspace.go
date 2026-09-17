@@ -349,6 +349,16 @@ func (c *Client) KillPane(paneID string) error {
 	return err
 }
 
+// ToggleTreeZoom makes the tree pane fill the window, and back again. Used for
+// views that need more width than a sidebar gives them — the session form. tmux
+// resizes the pane, so the TUI is told about the new size and redraws.
+func (c *Client) ToggleTreeZoom() error {
+	if c.TreePane == "" {
+		return nil
+	}
+	return c.runQuiet("resize-pane", "-Z", "-t", c.TreePane)
+}
+
 // DetachSelf drops the attached client, leaving the whole workspace running.
 // Detaching when nothing is attached is a no-op, not an error.
 func (c *Client) DetachSelf() error {

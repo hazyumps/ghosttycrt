@@ -123,16 +123,20 @@ func TestMenuIsNotOfferedForAGroupRow(t *testing.T) {
 	}
 }
 
-func TestMenuExplainsWhenNothingIsRunning(t *testing.T) {
+// A session that is not running still has a record, so its menu opens — just
+// without the actions that only make sense for a live connection.
+func TestMenuOffersForgetEvenWhenNothingIsRunning(t *testing.T) {
 	m := newModel(t, sample(), 100, 30)
 	m, _ = press(t, m, "d")
 
 	out := m.View()
-	if strings.Contains(out, "choose an action") {
-		t.Error("menu should not open for a session that is not running")
+	if !strings.Contains(out, "Forget") {
+		t.Fatalf("the menu should offer to forget the record:\n%s", out)
 	}
-	if !strings.Contains(out, "not running") {
-		t.Errorf("expected an explanation in the footer:\n%s", out)
+	for _, unwanted := range []string{"Kill", "Detach"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("%s makes no sense for a session that is not running:\n%s", unwanted, out)
+		}
 	}
 }
 

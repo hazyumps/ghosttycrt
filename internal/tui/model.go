@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ type Model struct {
 	menu     *menuState
 	menuHits []int
 	confirm  *confirmState
+	form     *form
 
 	status string
 	errMsg string
@@ -344,6 +346,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, last
 		}
 
+		if m.form != nil {
+			save, close, _ := m.form.update(msg)
+			if save {
+				return m, m.saveForm()
+			}
+			if close {
+				m.closeForm()
+			}
+			return m, nil
+		}
+
 		if m.confirm != nil {
 			return m.updateConfirm(msg)
 		}
@@ -487,6 +500,21 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.beginAttach(s)
 		}
+	case "n":
+		m.openForm(nil, true)
+	case "e":
+		if s := m.selectedSession(); s != nil {
+			m.openForm(s, false)
+		}
+	case "c":
+		if s := m.selectedSession(); s != nil {
+			dup := *s
+			dup.ID, dup.Slug = "", ""
+			dup.Name = s.Name + " copy"
+			m.openForm(&dup, true)
+		}
+	case " ":
+		m.togglePin()
 	case "d":
 		m.openSessionMenu()
 	}
@@ -523,7 +551,7 @@ func (m *Model) collapse() {
 // updateMouse makes the tree clickable: a click on a session opens it, a click
 // on a group header folds it, and the wheel moves the cursor.
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.confirm != nil || m.filtering {
+	if m.form != nil || m.confirm != nil || m.filtering {
 		return m, nil
 	}
 
@@ -721,16 +749,12 @@ func (m *Model) openSessionMenu() {
 		m.openWorkspaceMenu(s)
 		return
 	}
-	if _, ok := m.live[s.Slug]; !ok {
-		m.status = s.Name + " is not running — enter to connect"
-		return
-	}
 
 	sess := s
-	m.menu = &menuState{
-		title: sess.Name,
-		items: []menuItem{
-			{
+	items := []menuItem{}
+	if _, running := m.live[sess.Slug]; running {
+		items = append(items,
+			menuItem{
 				label: "Detach",
 				hint:  "leave it running",
 				run: func() tea.Cmd {
@@ -743,14 +767,23 @@ func (m *Model) openSessionMenu() {
 					return nil
 				},
 			},
-			{
+			menuItem{
 				label:       "Kill",
 				hint:        "stop it and its process",
 				destructive: true,
 				run:         func() tea.Cmd { m.askKill(sess); return nil },
-			},
-		},
+			})
 	}
+	// Forget is always offered: a session that is not running still has a
+	// record, and this is the only way to remove it.
+	items = append(items, menuItem{
+		label:       "Forget",
+		hint:        "remove it from sessions.toml",
+		destructive: true,
+		run:         func() tea.Cmd { m.askForget(sess); return nil },
+	})
+
+	m.menu = &menuState{title: sess.Name, items: items}
 }
 
 func (m *Model) askKill(s *session.Session) {
@@ -810,6 +843,13 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 	}
 
 	items = append(items, menuItem{
+		label:       "Forget",
+		hint:        "remove it from sessions.toml",
+		destructive: true,
+		run:         func() tea.Cmd { m.askForget(s); return nil },
+	})
+
+	items = append(items, menuItem{
 		label:       "Shut down workspace",
 		hint:        "stop everything and exit",
 		destructive: true,
@@ -856,6 +896,142 @@ func (m *Model) askShutdownWorkspace() {
 			}
 			return tea.Quit
 		},
+	}
+}
+
+// ---------------------------------------------------------------- sessions
+
+func (m *Model) providers() []string {
+	out := make([]string, 0, len(m.cfg.Credentials.Providers))
+	for name := range m.cfg.Credentials.Providers {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// slugTaken reports whether a slug belongs to some other session, so an edit
+// keeps its own slug instead of colliding with itself.
+func (m *Model) slugTaken(selfID string) func(string) bool {
+	used := map[string]bool{}
+	for _, s := range m.file.Session {
+		if s.ID != selfID {
+			used[s.Slug] = true
+		}
+	}
+	return func(slug string) bool { return used[slug] }
+}
+
+func (m *Model) openForm(s *session.Session, isNew bool) {
+	if m.form != nil {
+		return
+	}
+	m.form = newForm(m.cfg, s, isNew)
+	// A sidebar tree pane is too narrow to edit in, so borrow the window.
+	if m.workspace {
+		_ = m.client.ToggleTreeZoom()
+	}
+}
+
+func (m *Model) closeForm() {
+	if m.form != nil && m.workspace {
+		_ = m.client.ToggleTreeZoom()
+	}
+	m.form = nil
+	m.errMsg = ""
+	m.rebuild()
+	m.refresh()
+}
+
+// saveForm validates, writes the whole file atomically, and only then drops the
+// form — a rejected edit stays on screen with the reason.
+func (m *Model) saveForm() tea.Cmd {
+	s := m.form.toSession(m.slugTaken(m.form.id))
+
+	if problems := (&session.File{Session: []session.Session{*s}}).Validate(m.providers()); !problems.OK() {
+		m.form.err = strings.Join(problems.Strings(), "; ")
+		return nil
+	}
+	if err := session.SaveFile(m.paths.SessionsFile(), m.withSession(s)); err != nil {
+		m.form.err = err.Error()
+		return nil
+	}
+
+	m.file.Session = m.withSession(s)
+	name := s.Name
+	m.closeForm()
+	m.status = name + " saved"
+	return nil
+}
+
+// withSession returns the session list with s replacing the entry of the same
+// id, or appended when it is new.
+func (m *Model) withSession(s *session.Session) []session.Session {
+	out := make([]session.Session, 0, len(m.file.Session)+1)
+	replaced := false
+	for _, existing := range m.file.Session {
+		if existing.ID == s.ID {
+			out = append(out, *s)
+			replaced = true
+			continue
+		}
+		out = append(out, existing)
+	}
+	if !replaced {
+		out = append(out, *s)
+	}
+	return out
+}
+
+func (m *Model) togglePin() {
+	s := m.selectedSession()
+	if s == nil {
+		return
+	}
+	pinned := !s.Pinned
+	updated := *s
+	updated.Pinned = pinned
+	next := m.withSession(&updated)
+
+	if err := session.SaveFile(m.paths.SessionsFile(), next); err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	m.file.Session = next
+	if pinned {
+		m.status = s.Name + " pinned"
+	} else {
+		m.status = s.Name + " unpinned"
+	}
+	m.rebuild()
+	m.refresh()
+}
+
+// forget deletes the record. A running session is left alone: killing it is a
+// separate, deliberate act.
+func (m *Model) forget(s *session.Session) {
+	out := make([]session.Session, 0, len(m.file.Session))
+	for _, existing := range m.file.Session {
+		if existing.ID != s.ID {
+			out = append(out, existing)
+		}
+	}
+	if err := session.SaveFile(m.paths.SessionsFile(), out); err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	m.file.Session = out
+	m.status = s.Name + " removed from the tree"
+	m.rebuild()
+	m.refresh()
+}
+
+func (m *Model) askForget(s *session.Session) {
+	m.confirm = &confirmState{
+		prompt: fmt.Sprintf(
+			"Remove %s from the tree? It is deleted from sessions.toml. A running session is left running.",
+			s.Name),
+		yes: func() tea.Cmd { m.forget(s); return nil },
 	}
 }
 

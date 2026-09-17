@@ -37,6 +37,8 @@ func idleBlock() ([]string, int) {
 		"no connections open yet",
 		"",
 		"choose one in the tree, then press enter",
+		"",
+		"Ctrl-b t brings the keyboard back to the tree",
 	)
 
 	width := 0

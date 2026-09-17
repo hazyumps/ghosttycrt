@@ -233,3 +233,36 @@ func selectLastMenuItem(t *testing.T, m *tui.Model) *tui.Model {
 	}
 	return m
 }
+
+// The sidebar has no pane borders, so nothing on screen shows which pane owns
+// the keyboard. Opening a session hands it to the content pane, and the tree has
+// to say so rather than look merely idle.
+func TestSidebarSaysWhenTheKeyboardIsElsewhere(t *testing.T) {
+	m, client := sidebarModel(t, 120, "sleep 60")
+	m = selectK3s(t, m)
+	m = mustOpen(t, m) // Show focuses the content pane
+
+	refresh := func() {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+		m = updated.(*tui.Model)
+	}
+	refresh()
+	if out := m.View(); !strings.Contains(out, "Ctrl-b t") {
+		t.Fatalf("the tree should say where the keys went:\n%s", out)
+	}
+
+	// Give the tree the keyboard back; the hint should go.
+	tree, err := exec.Command("tmux", "-L", client.Socket, "list-panes", "-t",
+		tmux.WorkspaceSession+":"+tmux.TreeWindow, "-F", "#{pane_id}").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("tmux", "-L", client.Socket, "select-pane",
+		"-t", strings.Fields(string(tree))[0]).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	refresh()
+	if out := m.View(); strings.Contains(out, "keys are in the session pane") {
+		t.Fatalf("the hint should clear once the tree has focus:\n%s", out)
+	}
+}

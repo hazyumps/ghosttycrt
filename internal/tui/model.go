@@ -40,12 +40,13 @@ type Model struct {
 	hoverY    int
 	mouseOver bool
 
-	workspace bool
-	paneID    string
-	treeWidth int
-	tabs      bool
-	sidebar   bool
-	panes     map[string]tmux.Pane
+	workspace  bool
+	paneID     string
+	treeWidth  int
+	tabs       bool
+	sidebar    bool
+	treeActive bool
+	panes      map[string]tmux.Pane
 
 	help     bool
 	helpTop  int
@@ -124,6 +125,7 @@ func (m *Model) EnableWorkspace(paneID string) {
 
 	m.client.TreePane = paneID
 	m.client.SetLayout(m.layout())
+	m.treeActive = true
 
 	// A workspace outlives the binary that started it: re-running gcrt attaches
 	// to the existing tree process, so an upgrade silently does nothing until
@@ -256,6 +258,9 @@ func (m *Model) refresh() {
 	m.errMsg = ""
 	if !m.client.Available() {
 		return
+	}
+	if m.workspace {
+		m.treeActive = m.client.TreeActive()
 	}
 
 	if m.workspace {

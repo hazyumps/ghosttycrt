@@ -366,6 +366,9 @@ func (m *Model) viewFooter() string {
 	}
 	left := styleDim.Render(" " + keys)
 	switch {
+	case m.workspace && !m.treeActive:
+		// The keys below go nowhere from here: another pane has them.
+		left = styleWarn.Render(" ◀ keys are in the session pane — Ctrl-b t comes back to the tree")
 	case m.errMsg != "":
 		left = styleErr.Render(" ✗ " + m.errMsg)
 	case m.status != "":

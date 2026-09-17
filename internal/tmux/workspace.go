@@ -399,6 +399,20 @@ func (c *Client) SetTreeVersion(v string) error {
 	return c.runQuiet("set-option", "-p", "-t", c.TreePane, "@gcrt_version", v)
 }
 
+// TreeActive reports whether the tree pane is the one receiving keys. The
+// sidebar has no pane borders, so without this the tree cannot tell that focus
+// has moved to the content pane.
+func (c *Client) TreeActive() bool {
+	if c.TreePane == "" {
+		return true
+	}
+	out, err := c.run("display-message", "-p", "-t", c.TreePane, "#{pane_active}")
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(out) == "1"
+}
+
 // ToggleTreeZoom makes the tree pane fill the window, and back again. Used for
 // views that need more width than a sidebar gives them — the session form. tmux
 // resizes the pane, so the TUI is told about the new size and redraws.

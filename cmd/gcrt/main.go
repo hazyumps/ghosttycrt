@@ -119,7 +119,7 @@ func browse(cfg *config.Config, paths config.Paths, file *session.File, problems
 	if tmux.InWorkspace() {
 		m.EnableWorkspace(os.Getenv("TMUX_PANE"))
 	}
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "gcrt:", err)
 		return 1

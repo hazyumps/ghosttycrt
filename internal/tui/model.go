@@ -35,6 +35,11 @@ type Model struct {
 
 	// workspace mode: the tree is pane 0 of a tmux session and every connection
 	// is a tagged pane or window alongside it.
+	// where the pointer is, for hover highlighting
+	hoverX    int
+	hoverY    int
+	mouseOver bool
+
 	workspace bool
 	paneID    string
 	treeWidth int
@@ -346,6 +351,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, last
 		}
 
+		m.mouseOver = false
+
 		if m.form != nil {
 			save, close, _ := m.form.update(msg)
 			if save {
@@ -550,7 +557,18 @@ func (m *Model) collapse() {
 
 // updateMouse makes the tree clickable: a click on a session opens it, a click
 // on a group header folds it, and the wheel moves the cursor.
+// hovering reports whether a cell is under the pointer, so a view can soften it.
+func (m *Model) hovering(screenRow, x0, x1 int) bool {
+	return m.mouseOver && m.hoverY == screenRow && m.hoverX >= x0 && m.hoverX < x1
+}
+
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Motion is worth tracking in every view: it is what hover is made of.
+	if msg.Action == tea.MouseActionMotion {
+		m.hoverX, m.hoverY, m.mouseOver = msg.X, msg.Y, true
+		return m, nil
+	}
+
 	if m.form != nil {
 		save, closed, _ := m.form.mouse(msg)
 		if save {

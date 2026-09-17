@@ -13,7 +13,8 @@ you the terminal; the session outlives `gcrt` and Ghostty. With
 every connection gets its own tab (`workspace_layout = "tabs"`), or the tree
 stays pinned on the left with the tabs beside it (`"sidebar"`), or connections
 tile as panes when you want several visible at once (`"split"`). The top row is a clickable menu bar; `?` or the
-`Help` item opens the full key and command list. Sessions can be created,
+`Help` item opens the full key and command list. The mouse highlights whatever
+it is over, and clicking a host opens it. Sessions can be created,
 edited, duplicated, pinned and removed from the UI, with atomic writes to
 `sessions.toml`. Serial and logging are next
 ([`spec/09-milestones.md`](spec/09-milestones.md)).

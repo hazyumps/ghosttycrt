@@ -28,6 +28,8 @@ var (
 	styleWarn   = lipgloss.NewStyle().Foreground(colWarn)
 	styleErr    = lipgloss.NewStyle().Foreground(colErr)
 	styleCursor = lipgloss.NewStyle().Foreground(colText).Background(lipgloss.AdaptiveColor{Light: "#e0d6f5", Dark: "#3a2f52"})
+	styleHover  = lipgloss.NewStyle().Background(lipgloss.AdaptiveColor{Light: "#f0ecfa", Dark: "#2b2b40"})
+	styleBarHi  = lipgloss.NewStyle().Foreground(colAccent).Background(lipgloss.AdaptiveColor{Light: "#f0ecfa", Dark: "#2b2b40"})
 	styleLabel  = lipgloss.NewStyle().Foreground(colDim).Width(13)
 	styleBox    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 )
@@ -106,15 +108,20 @@ func (m *Model) renderBar() (string, []barItem) {
 		if wide {
 			label = items[i].title
 		}
-		style := styleText
-		if items[i].emphasis {
-			style = styleAccent
-		}
-		b.WriteString(style.Render(label))
-
 		items[i].start = col
 		col += lipgloss.Width(label)
 		items[i].end = col
+
+		rendered := label
+		switch {
+		case m.hovering(0, items[i].start, items[i].end):
+			rendered = styleBarHi.Render(label)
+		case items[i].emphasis:
+			rendered = styleAccent.Render(label)
+		default:
+			rendered = styleText.Render(label)
+		}
+		b.WriteString(rendered)
 	}
 	return b.String(), items
 }
@@ -201,8 +208,12 @@ func (m *Model) viewTree(width, height int) string {
 	}
 	for i := m.offset; i < end; i++ {
 		line := m.renderRow(m.rows[i])
-		if i == m.cursor {
+		screenRow := 1 + (i - m.offset)
+		switch {
+		case i == m.cursor:
 			line = styleCursor.Width(width).Render(line)
+		case m.hovering(screenRow, 0, width):
+			line = styleHover.Width(width).Render(line)
 		}
 		lines = append(lines, clip(line, width))
 	}
@@ -433,7 +444,11 @@ func (m *Model) viewForm() string {
 		}
 
 		f.rows[i] = len(lines)
-		lines = append(lines, cursor+styleDim.Width(14).Render(spec.label)+vstyle.Render(value))
+		field := cursor + styleDim.Width(14).Render(spec.label) + vstyle.Render(value)
+		if m.hovering(len(lines), 0, m.width) {
+			field = styleHover.Render(padRight(field, m.innerWidth()))
+		}
+		lines = append(lines, field)
 
 		if spec.kind == fieldGroup && f.dropdown {
 			for j, choice := range f.groupChoices {
@@ -451,7 +466,11 @@ func (m *Model) viewForm() string {
 					mark, style = "   › ", styleAccent
 				}
 				f.dropRows = append(f.dropRows, len(lines))
-				lines = append(lines, mark+style.Render(label))
+				entry := mark + style.Render(label)
+				if m.hovering(len(lines), 0, m.width) {
+					entry = styleHover.Render(padRight(entry, m.innerWidth()))
+				}
+				lines = append(lines, entry)
 			}
 		}
 	}
@@ -519,7 +538,7 @@ func (m *Model) viewMenu() string {
 	}
 	lines = append(lines, "", styleDim.Render(clip(hint, inner)))
 
-	rendered, rows := m.modal(m.menu.title, lines, itemLines)
+	rendered, rows := m.modal(m.menu.title, lines, itemLines, true)
 	m.menuHits = rows
 	return rendered
 }
@@ -531,7 +550,7 @@ func (m *Model) viewConfirm() string {
 		lines = append(lines, styleText.Render(clip(l, inner)))
 	}
 	lines = append(lines, "", styleDim.Render(clip("y: yes      N: no (default)", inner)))
-	rendered, _ := m.modal("", lines, nil)
+	rendered, _ := m.modal("", lines, nil, false)
 	return rendered
 }
 
@@ -565,6 +584,7 @@ func (m *Model) helpSections() []helpSection {
 			{"esc", "cancel, or revert the field being edited"},
 		}},
 		{title: "Mouse", rows: [][2]string{
+			{"hover", "soft-highlights whatever is under the pointer"},
 			{"click a host", "open it"},
 			{"click a group", "fold or unfold it"},
 			{"click the bar", "the menu items along the top"},
@@ -664,7 +684,7 @@ func (m *Model) viewHelp() string {
 	}
 	visible = append(visible, "", styleDim.Render(clip(hint, inner)))
 
-	rendered, _ := m.modal("ghosttycrt — help", visible, nil)
+	rendered, _ := m.modal("ghosttycrt — help", visible, nil, false)
 	return rendered
 }
 
@@ -692,7 +712,7 @@ func (m *Model) innerHeight() int {
 // screen rows the caller wants back, so a click can be matched to what was
 // actually drawn; the box is positioned here rather than by lipgloss.Place so
 // that arithmetic is not guessed at from the outside.
-func (m *Model) modal(title string, lines []string, hitLines []int) (string, []int) {
+func (m *Model) modal(title string, lines []string, hitLines []int, hover bool) (string, []int) {
 	inner := m.innerWidth()
 	height := m.innerHeight()
 
@@ -727,6 +747,13 @@ func (m *Model) modal(title string, lines []string, hitLines []int) (string, []i
 	for _, h := range hitLines {
 		if h >= 0 && h+titleLines < len(content) {
 			rows = append(rows, contentTop+h)
+		}
+	}
+	if hover {
+		for i := range content {
+			if m.hovering(contentTop+i, 0, m.width) {
+				content[i] = styleHover.Render(padRight(content[i], inner))
+			}
 		}
 	}
 

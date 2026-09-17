@@ -117,3 +117,70 @@ func TestClickMapsThroughTheScrollOffset(t *testing.T) {
 		t.Fatalf("selection = %q, want host-43 (offset must be applied)", got)
 	}
 }
+
+// ------------------------------------------------------------------- hover
+
+func hover(t *testing.T, m *tui.Model, x, y int) *tui.Model {
+	t.Helper()
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionMotion, X: x, Y: y})
+	return updated.(*tui.Model)
+}
+
+func TestHoverSoftensTheRowUnderThePointer(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	before := m.View()
+
+	// Row 5 is k3s-01; row 3 is where the cursor already sits, and the cursor
+	// deliberately outranks hover.
+	m = hover(t, m, 5, 5)
+	if m.View() == before {
+		t.Error("hovering a row should change how it renders")
+	}
+	if got := m.SelectedName(); got != "core-sw-01" {
+		t.Errorf("hover moved the selection to %q", got)
+	}
+}
+
+// Motion must not become a click: the tree only opens on a real press.
+func TestHoverDoesNotOpenASession(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	if _, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionMotion, X: 5, Y: 5}); cmd != nil {
+		t.Error("moving the pointer should return no command")
+	}
+}
+
+func TestHoveringTheMenuBarLightsItUp(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+	before := m.View()
+
+	m = hover(t, m, 15, 0) // over the menu bar
+	if m.View() == before {
+		t.Error("hovering a menu bar item should change how it renders")
+	}
+}
+
+func TestAKeypressTakesTheHoverBack(t *testing.T) {
+	m := newModel(t, sample(), 100, 30)
+
+	m = hover(t, m, 5, 5) // k3s-01, not the cursor row
+	withHover := m.View()
+
+	// Move away and back, so the cursor ends where it started but the pointer
+	// is no longer the last thing that moved.
+	m, _ = press(t, m, "k")
+	m, _ = press(t, m, "j")
+	if m.View() == withHover {
+		t.Error("a keypress should clear the hover highlight")
+	}
+}
+
+func TestHoverAppliesInTheForm(t *testing.T) {
+	m, _ := crudModel(t)
+	m, _ = press(t, m, "n")
+	before := m.View()
+
+	m = hover(t, m, 10, rowOf(t, m, "description"))
+	if m.View() == before {
+		t.Error("hovering a form field should change how it renders")
+	}
+}

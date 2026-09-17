@@ -101,7 +101,7 @@ func TestKillMenuConfirmsAndKills(t *testing.T) {
 	if !strings.Contains(out, "Detach") || !strings.Contains(out, "Kill") {
 		t.Fatalf("menu is missing actions:\n%s", out)
 	}
-	if !strings.Contains(out, "▸ Detach") {
+	if !strings.Contains(stripANSI(out), "▸ Detach") {
 		t.Errorf("Detach should be the default selection:\n%s", out)
 	}
 

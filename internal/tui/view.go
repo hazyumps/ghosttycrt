@@ -600,6 +600,7 @@ func (m *Model) helpSections() []helpSection {
 		sections = append([]helpSection{{title: "Workspace", rows: [][2]string{
 			{"Ctrl-b t", "back to the tree from a session"},
 			{"Ctrl-b d", "detach the whole workspace"},
+			{"Ctrl-b R", "respawn the tree if it ever dies"},
 			{"Ctrl-b z", "zoom a pane to fill the window"},
 		}}}, sections...)
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -40,10 +41,11 @@ type Model struct {
 	sidebar   bool
 	panes     map[string]tmux.Pane
 
-	help    bool
-	helpTop int
-	menu    *menuState
-	confirm *confirmState
+	help     bool
+	helpTop  int
+	menu     *menuState
+	menuHits []int
+	confirm  *confirmState
 
 	status string
 	errMsg string
@@ -79,6 +81,13 @@ type workspaceShownMsg struct {
 	slug   string
 	err    error
 }
+
+// refreshTick keeps the tree honest about the world: connections come and go on
+// their own (a session exits, a shell logs out), and nothing tells gcrt. One
+// cheap tmux call every couple of seconds is far friendlier than requiring `r`.
+type refreshTickMsg struct{}
+
+const refreshInterval = 2 * time.Second
 
 func New(cfg *config.Config, file *session.File, paths config.Paths, problems session.Problems, client *tmux.Client) *Model {
 	m := &Model{
@@ -132,7 +141,11 @@ func (m *Model) tabbed() bool { return m.layout() != tmux.LayoutSplit }
 // paneOpen reports whether a connection is the one on screen.
 func (m *Model) paneOpen(p tmux.Pane) bool { return p.Open(m.layout()) }
 
-func (m *Model) Init() tea.Cmd { return nil }
+func (m *Model) Init() tea.Cmd { return tick() }
+
+func tick() tea.Cmd {
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return refreshTickMsg{} })
+}
 
 func (m *Model) rebuild() {
 	m.root = session.BuildTree(m.file.Session)
@@ -307,6 +320,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh()
 		return m, nil
+
+	case refreshTickMsg:
+		m.refresh()
+		return m, tick()
 
 	case tea.MouseMsg:
 		return m.updateMouse(msg)
@@ -506,7 +523,26 @@ func (m *Model) collapse() {
 // updateMouse makes the tree clickable: a click on a session opens it, a click
 // on a group header folds it, and the wheel moves the cursor.
 func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.confirm != nil || m.menu != nil || m.filtering {
+	if m.confirm != nil || m.filtering {
+		return m, nil
+	}
+
+	// Once a menu is up it stays up until it is used or dismissed: a click
+	// elsewhere does nothing rather than knocking it over.
+	if m.menu != nil {
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			for i, row := range m.menuHits {
+				if msg.Y != row || i >= len(m.menu.items) {
+					continue
+				}
+				item := m.menu.items[i]
+				m.menu = nil
+				if item.run != nil {
+					return m, item.run()
+				}
+				return m, nil
+			}
+		}
 		return m, nil
 	}
 
@@ -527,6 +563,19 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if msg.X >= item.start && msg.X < item.end {
 				return m, item.run()
 			}
+		}
+		return m, nil
+	}
+
+	// Right-clicking a session opens its action menu, where it can be closed.
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight {
+		index := m.offset + (msg.Y - 1)
+		if msg.Y <= 0 || index < 0 || index >= len(m.rows) {
+			return m, nil
+		}
+		m.setCursor(index)
+		if m.rows[index].Node.Kind == session.KindSession {
+			m.openSessionMenu()
 		}
 		return m, nil
 	}

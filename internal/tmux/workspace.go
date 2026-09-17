@@ -136,7 +136,9 @@ func (c *Client) Panes() ([]Pane, error) {
 func (c *Client) Configure(treeWidth int, treePaneID string) error {
 	opts := [][2]string{
 		{"mouse", "on"},
-		{"remain-on-exit", "on"},
+		// "failed" not "on": exiting a session cleanly should close it, while a
+		// connection that dies leaves its pane up with the exit status.
+		{"remain-on-exit", "failed"},
 		{"automatic-rename", "off"},
 		{"history-limit", "50000"},
 		{"set-clipboard", "on"},

@@ -92,6 +92,7 @@ pane; a second switches the tab.
 | `l` | open today's log |
 | `L` | browse all logs for the session |
 | `d` | kill / detach / forget (a menu, defaulting to detach) |
+| right-click | the same menu for the session under the pointer; it stays up, and its items are clickable |
 | `r` | refresh tmux state |
 | `i` | imports |
 | `D` | doctor |

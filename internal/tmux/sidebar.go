@@ -144,7 +144,7 @@ func (c *Client) configureTabServer() error {
 		{"status-position", "top"},
 		{"mouse", "on"},
 		{"automatic-rename", "off"},
-		{"remain-on-exit", "on"},
+		{"remain-on-exit", "failed"},
 		{"history-limit", "50000"},
 		{"status-left", ""},
 		{"status-right", ""},
@@ -242,15 +242,59 @@ func (c *Client) showSidebar(slug string, argv, env []string) (string, error) {
 	return id, c.focusContent()
 }
 
+// bootstrapWindow is a placeholder that exists only long enough for the tab
+// server's global options to be in force.
+const bootstrapWindow = "gcrt-startup"
+
 // createTabWindow opens the connection as a window in the tab server, creating
 // that server's session if this is the first connection.
+//
+// The first connection is special. Options are per-server, so remain-on-exit
+// has to be in force before a process starts — a command that exits at once (a
+// mistyped host, say) would otherwise die before the option was set and take
+// its window with it. So the session is brought up with a placeholder window,
+// the options are applied, and that window is *respawned* into the connection.
+// Respawning rather than killing-and-creating keeps the window count at one and
+// sidesteps tmux refusing to kill a session's last window.
 func (c *Client) createTabWindow(slug string, argv, env []string) (string, error) {
 	tabs := c.tabClient()
 
-	args := []string{"new-window", "-d", "-P", "-F", "#{pane_id}", "-t", TabsSession, "-n", slug}
 	if !tabs.HasTarget(TabsSession) {
-		args = []string{"new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TabsSession, "-n", slug}
+		if _, err := tabs.run("new-session", "-d", "-s", TabsSession,
+			"-n", bootstrapWindow, "sleep", "86400"); err != nil {
+			return "", err
+		}
+		if err := c.configureTabServer(); err != nil {
+			return "", err
+		}
+
+		args := []string{"respawn-window", "-k", "-t", TabsSession + ":" + bootstrapWindow}
+		for _, e := range env {
+			args = append(args, "-e", e)
+		}
+		args = append(args, argv...)
+		if _, err := tabs.run(args...); err != nil {
+			return "", err
+		}
+		if _, err := tabs.run("rename-window", "-t", TabsSession+":"+bootstrapWindow, slug); err != nil {
+			return "", err
+		}
+		out, err := tabs.run("list-panes", "-t", TabsSession+":"+slug, "-F", "#{pane_id}")
+		if err != nil {
+			return "", err
+		}
+		panes := parseLines(out)
+		if len(panes) == 0 {
+			return "", fmt.Errorf("tmux did not report a pane id for %s", slug)
+		}
+		return panes[0], c.tagPane(tabs, panes[0], slug)
 	}
+
+	if err := c.configureTabServer(); err != nil {
+		return "", err
+	}
+
+	args := []string{"new-window", "-d", "-P", "-F", "#{pane_id}", "-t", TabsSession, "-n", slug}
 	for _, e := range env {
 		args = append(args, "-e", e)
 	}
@@ -264,17 +308,16 @@ func (c *Client) createTabWindow(slug string, argv, env []string) (string, error
 	if id == "" {
 		return "", fmt.Errorf("tmux did not report a pane id for %s", slug)
 	}
-	if _, err := tabs.run("set-option", "-p", "-t", id, slugOption, slug); err != nil {
-		return "", err
+	return id, c.tagPane(tabs, id, slug)
+}
+
+// tagPane records which session a pane belongs to, and labels it.
+func (c *Client) tagPane(tabs *Client, paneID, slug string) error {
+	if _, err := tabs.run("set-option", "-p", "-t", paneID, slugOption, slug); err != nil {
+		return err
 	}
-	if _, err := tabs.run("select-pane", "-t", id, "-T", slug); err != nil {
-		return "", err
-	}
-	// Options live on the server, so a freshly created one needs them again.
-	if err := c.configureTabServer(); err != nil {
-		return "", err
-	}
-	return id, nil
+	_, err := tabs.run("select-pane", "-t", paneID, "-T", slug)
+	return err
 }
 
 func parseLines(out string) []string {

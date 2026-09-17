@@ -53,7 +53,7 @@ Keys that differ from `inline`:
 | | |
 |---|---|
 | `enter` | go to the connection's tab (`tabs`, `sidebar`) or open it beside the tree (`split`) |
-| `d` | Switch to it / Kill, plus *Shut down workspace* (`tabs`, `sidebar`); Show / Hide / Kill in `split` |
+| `d` or right-click | Switch to it / Kill, plus *Shut down workspace* (`tabs`, `sidebar`); Show / Hide / Kill in `split`. The menu is sticky and its items are clickable |
 | `q` | **detach** — the workspace keeps running |
 | `Ctrl-b t` | back to the tree from a session pane |
 | `Ctrl-b d` | detach the whole workspace (tmux's own) |
@@ -149,16 +149,26 @@ M3 is what makes it feel like SecureCRT; M2 is what makes console work possible.
     pane runs an attach *loop* rather than a bare `attach`. Nested tmux is safe
     here: the outer client eats the prefix before a pane sees it, so the inner
     server has no reachable prefix. Two servers must be torn down together.
-15. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
+15. **`remain-on-exit` is `failed`, not `on`.** A clean exit should close the
+    session; a failure should stay visible. Setting *any* server option before a
+    session exists fails (a sessionless server exits), and setting it after the
+    first connection is a race — a command that exits instantly beats the option
+    and takes its window with it. Hence the placeholder window in
+    `createTabWindow`, which is *respawned* into the connection rather than
+    killed: killing a session's last window is refused.
+16. **Nothing tells gcrt when a connection exits**, so the tree refreshes on a
+    2s timer. Without it a session that died while you were elsewhere keeps
+    showing as running until you press `r`.
+17. **Bubbletea batches keystrokes.** Several keys arriving in one read (a paste,
     or fast typing) become **one** `KeyMsg` whose `String()` is `"jj"`, matching
     no single-key case — so both are dropped, and pasting into the filter did
     nothing. `Update` now detects a multi-rune `KeyMsg` and replays each rune.
     Any test that sends batched input hits this too.
-16. **A composed line wider than the pane wraps and wrecks the frame.** The
+18. **A composed line wider than the pane wraps and wrecks the frame.** The
     footer's key list alone is longer than 80 columns. `fitLine` drops the
     capability strip, then the scroll position, then clips. Same class of bug as
     the oversized modal: `Place` and `Width` never shrink what you hand them.
-17. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
+19. **`lipgloss.Width` is a minimum, not a maximum.** A 21-character key in a
     20-column field pushes the following text out of the box. Clip before
     padding.
 

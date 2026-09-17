@@ -387,6 +387,8 @@ func (m *Model) viewEmpty() string {
 func (m *Model) viewMenu() string {
 	inner := m.innerWidth()
 	lines := []string{styleDim.Render(clip("choose an action", inner))}
+	var itemLines []int
+
 	for i, item := range m.menu.items {
 		cursor := "  "
 		if i == m.menu.index {
@@ -403,10 +405,18 @@ func (m *Model) viewMenu() string {
 		if inner >= 34 && item.hint != "" {
 			line += "  " + styleDim.Render(item.hint)
 		}
+		itemLines = append(itemLines, len(lines))
 		lines = append(lines, clip(line, inner))
 	}
-	lines = append(lines, "", styleDim.Render(clip("j/k move   enter select   esc cancel", inner)))
-	return m.modal(m.menu.title, lines)
+	hint := "j/k move   enter select   esc cancel"
+	if inner < 34 {
+		hint = "j/k  enter  esc"
+	}
+	lines = append(lines, "", styleDim.Render(clip(hint, inner)))
+
+	rendered, rows := m.modal(m.menu.title, lines, itemLines)
+	m.menuHits = rows
+	return rendered
 }
 
 func (m *Model) viewConfirm() string {
@@ -416,7 +426,8 @@ func (m *Model) viewConfirm() string {
 		lines = append(lines, styleText.Render(clip(l, inner)))
 	}
 	lines = append(lines, "", styleDim.Render(clip("y: yes      N: no (default)", inner)))
-	return m.modal("", lines)
+	rendered, _ := m.modal("", lines, nil)
+	return rendered
 }
 
 type helpSection struct {
@@ -542,7 +553,8 @@ func (m *Model) viewHelp() string {
 	}
 	visible = append(visible, "", styleDim.Render(clip(hint, inner)))
 
-	return m.modal("ghosttycrt — help", visible)
+	rendered, _ := m.modal("ghosttycrt — help", visible, nil)
+	return rendered
 }
 
 // innerWidth is how wide modal content may be: the pane minus the box border
@@ -565,17 +577,19 @@ func (m *Model) innerHeight() int {
 	return h
 }
 
-// modal draws a bordered box that is guaranteed to fit the pane. Content is
-// clipped to innerWidth and truncated to innerHeight first, so the box can
-// never be larger than the terminal — an oversized box spills into the
-// neighbouring pane, because Place cannot shrink what it is handed.
-func (m *Model) modal(title string, lines []string) string {
+// modal renders a centred box. hitLines names content lines whose absolute
+// screen rows the caller wants back, so a click can be matched to what was
+// actually drawn; the box is positioned here rather than by lipgloss.Place so
+// that arithmetic is not guessed at from the outside.
+func (m *Model) modal(title string, lines []string, hitLines []int) (string, []int) {
 	inner := m.innerWidth()
 	height := m.innerHeight()
 
 	content := make([]string, 0, len(lines)+1)
+	titleLines := 0
 	if title != "" {
 		content = append(content, styleTitle.Render(clip(title, inner)))
+		titleLines = 1
 	}
 	for _, l := range lines {
 		content = append(content, clip(l, inner))
@@ -585,7 +599,38 @@ func (m *Model) modal(title string, lines []string) string {
 	}
 
 	box := styleBox.Render(lipgloss.JoinVertical(lipgloss.Left, content...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	boxW, boxH := lipgloss.Width(box), lipgloss.Height(box)
+
+	originX := (m.width - boxW) / 2
+	if originX < 0 {
+		originX = 0
+	}
+	originY := (m.height - boxH) / 2
+	if originY < 0 {
+		originY = 0
+	}
+
+	// A content line sits below the border and the box's own top padding.
+	contentTop := originY + 2 + titleLines
+	var rows []int
+	for _, h := range hitLines {
+		if h >= 0 && h+titleLines < len(content) {
+			rows = append(rows, contentTop+h)
+		}
+	}
+
+	out := make([]string, 0, m.height)
+	for i := 0; i < originY; i++ {
+		out = append(out, "")
+	}
+	pad := strings.Repeat(" ", originX)
+	for _, bl := range strings.Split(box, "\n") {
+		out = append(out, pad+bl)
+	}
+	for len(out) < m.height {
+		out = append(out, "")
+	}
+	return strings.Join(out, "\n"), rows
 }
 
 // wrap breaks plain text on spaces to fit width.

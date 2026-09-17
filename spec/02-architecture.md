@@ -164,9 +164,15 @@ Other consequences worth knowing:
 - `Ctrl-b d` detaches the whole workspace; `q` does the same, because quitting
   would kill the panes that *are* the sessions. Shutting the workspace down is a
   confirmed action in the `d` menu, and tears down both servers.
-- A crashed connection leaves a dead pane showing its exit status
-  (`remain-on-exit`) rather than vanishing. Entering it again restarts it: a
-  dead pane cannot be revived, so it is replaced.
+- **A connection that exits cleanly closes itself** — the tab or pane goes away.
+  A connection that *fails* stays, showing its exit status, because
+  `remain-on-exit` is `failed` rather than `on`. Entering it again restarts it:
+  a dead pane cannot be revived, so it is replaced.
+- **The tree refreshes on a timer.** Nothing tells gcrt when a connection exits;
+  one cheap `list-panes` every couple of seconds keeps the tree honest without
+  asking the user to press `r`.
+- Right-clicking a session opens its action menu, which stays up until it is
+  used or dismissed, and its items are clickable.
 - `mouse on` gives click-to-focus panes, clickable tabs, and draggable borders;
   it costs drag-to-select (use Shift-drag). Clicking a tab in the `sidebar`
   costs one click the first time — the first click only moves focus into the

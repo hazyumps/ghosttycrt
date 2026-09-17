@@ -160,10 +160,13 @@ func (c *Client) configureTabServer() error {
 	// Right-clicking a tab should offer the two things worth doing to it, not
 	// tmux's window menu. The menu keeps its own target, so the actions need no
 	// explicit -t.
+	// The commands are passed bare, not wrapped in braces. Braces inside a
+	// single argument make tmux store the command as a *string*, and choosing
+	// the item then fails to parse it — "syntax error".
 	menu := []string{"bind-key", "-T", "root", "MouseDown3Status",
 		"display-menu", "-T", "#[align=centre]#{window_name}", "-t", "=", "-x", "W", "-y", "W",
-		"Switch to it", "s", "{ select-window }",
-		"Kill", "X", "{ kill-window }",
+		"Switch to it", "s", "select-window",
+		"Kill", "X", "kill-window",
 	}
 	if _, err := tabs.run(menu...); err != nil {
 		return err

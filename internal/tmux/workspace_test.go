@@ -244,3 +244,48 @@ func TestConfigureBindsAKeyBackToTheTree(t *testing.T) {
 		t.Fatalf("prefix t is not bound to the tree pane %s:\n%s", tree, bind)
 	}
 }
+
+// tmux stores a command wrapped in braces inside one argument as a *string*
+// rather than as a parsed command, and choosing the menu item then fails with
+// "Syntax error". The commands must be passed bare.
+func TestTabMenuCommandsAreNotWrappedInBraces(t *testing.T) {
+	c := testClient(t)
+	exec.Command("tmux", "-L", c.Socket, "new-session", "-d",
+		"-s", tmux.WorkspaceSession, "-n", tmux.TreeWindow, "sleep", "60").Run()
+
+	tabsSocket := c.Socket + "-tabs"
+	t.Cleanup(func() { exec.Command("tmux", "-L", tabsSocket, "kill-server").Run() })
+	if out, err := exec.Command("tmux", "-L", tabsSocket, "new-session", "-d",
+		"-s", tmux.TabsSession, "-n", "placeholder", "sleep", "60").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+
+	c.TabsSocket = tabsSocket
+	c.TreePane = "%0"
+	c.SetLayout(tmux.LayoutSidebar)
+	if err := c.Configure(30, "%0"); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+
+	out, err := exec.Command("tmux", "-L", tabsSocket, "list-keys", "-T", "root").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := ""
+	for _, l := range strings.Split(string(out), "\n") {
+		// Exactly our binding, not tmux's M-MouseDown3Status default.
+		if strings.Contains(l, "-T root MouseDown3Status ") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("the tab bar has no right-click menu:\n%s", out)
+	}
+	// The title's #{window_name} has braces and that is fine; what must not is
+	// a command wrapped in them, which is what the bare form avoids.
+	for _, want := range []string{"s select-window", "X kill-window"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the menu should pass %q bare, not wrapped in braces:\n%s", want, line)
+		}
+	}
+}

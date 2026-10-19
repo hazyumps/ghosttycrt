@@ -45,12 +45,13 @@ type Session struct {
 }
 
 type SSHConfig struct {
-	Host     string `toml:"host"`
-	Port     int    `toml:"port"`
-	User     string `toml:"user"`
-	Jump     string `toml:"jump"`
-	Identity string `toml:"identity"`
-	Terminal string `toml:"terminal"`
+	Host       string `toml:"host"`
+	Port       int    `toml:"port"`
+	User       string `toml:"user"`
+	Jump       string `toml:"jump"`
+	Identity   string `toml:"identity"`
+	Terminal   string `toml:"terminal"`
+	AuthMethod string `toml:"auth_method"`
 }
 
 type SerialConfig struct {
@@ -101,6 +102,15 @@ var (
 // ValidTerminal accepts a terminfo name, or empty to inherit the pane's TERM.
 func ValidTerminal(value string) bool {
 	return value == "" || terminalPattern.MatchString(value)
+}
+
+func ValidSSHAuthMethod(value string) bool {
+	switch value {
+	case "", "auto", "password", "publickey":
+		return true
+	default:
+		return false
+	}
 }
 
 // Slugify derives a tmux-safe slug from a display name.

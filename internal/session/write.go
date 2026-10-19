@@ -61,6 +61,9 @@ func writeSession(bw *bufio.Writer, s Session) {
 		if c.Terminal != "" {
 			kv(bw, "  ", "terminal", quote(c.Terminal))
 		}
+		if c.AuthMethod != "" {
+			kv(bw, "  ", "auth_method", quote(c.AuthMethod))
+		}
 	}
 
 	if c := s.Serial; c != nil {

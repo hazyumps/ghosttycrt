@@ -14,7 +14,7 @@ func TestWriteRoundTripsThroughLoad(t *testing.T) {
 			ID: "id-1", Name: "core-sw-01", Slug: "core-sw-01", Transport: TransportSSH,
 			Group: "network/switches", Tags: []string{"cisco", "prod"}, Pinned: true,
 			Description: "Cisco C9300, rack A",
-			SSH:         &SSHConfig{Host: "10.1.3.11", Port: 2222, User: "admin", Jump: "bastion", Terminal: "xterm"},
+			SSH:         &SSHConfig{Host: "10.1.3.11", Port: 2222, User: "admin", Jump: "bastion", Terminal: "xterm", AuthMethod: "password"},
 			Logging:     &LoggingConfig{Enabled: true},
 			Credentials: &CredentialsConfig{Provider: "infisical", Ref: "CORE-SW-01-PASS"},
 		},
@@ -55,6 +55,9 @@ func TestWriteRoundTripsThroughLoad(t *testing.T) {
 	if got.Credentials == nil || got.Credentials.Ref != "CORE-SW-01-PASS" {
 		t.Fatalf("credentials did not round trip: %+v", got.Credentials)
 	}
+	if got.SSH.AuthMethod != "password" {
+		t.Fatalf("authentication choice did not round trip: %q", got.SSH.AuthMethod)
+	}
 	if len(got.Tags) != 2 || got.Tags[0] != "cisco" {
 		t.Fatalf("tags did not round trip: %v", got.Tags)
 	}
@@ -83,7 +86,7 @@ func TestWriteOmitsEmptyOptionalFields(t *testing.T) {
 		}
 	}
 
-	for _, unwanted := range []string{"group", "tags", "description", "port", "user", "jump", "identity", "terminal"} {
+	for _, unwanted := range []string{"group", "tags", "description", "port", "user", "jump", "identity", "terminal", "auth_method"} {
 		if keys[unwanted] {
 			t.Errorf("output should not set %q when it is unset:\n%s", unwanted, buf.String())
 		}

@@ -90,6 +90,24 @@ func TestTerminalChoiceCanBeClickedSavedAndInheritedAgain(t *testing.T) {
 	}
 }
 
+func TestMouseAuthChoicePersistsAndLeavesOtherSessionsAlone(t *testing.T) {
+	m, path := crudModel(t)
+	for _, want := range []string{"password", "publickey", ""} {
+		m, _ = press(t, m, "e")
+		m, _ = clickText(t, m, "auth method")
+		m, _ = clickText(t, m, "[ Save ]")
+		file := reload(t, path)
+		s, _ := byName(file, "core-sw-01")
+		if s.SSH.AuthMethod != want {
+			t.Fatalf("auth method = %q, want %q", s.SSH.AuthMethod, want)
+		}
+		other, _ := byName(file, "k3s-01")
+		if other.SSH.AuthMethod != "" {
+			t.Fatal("auth choice changed another session")
+		}
+	}
+}
+
 func TestMouseCanLeaveQuickConnectHelpAndMenus(t *testing.T) {
 	m, path := crudModel(t)
 	before, _ := os.ReadFile(path)

@@ -58,7 +58,7 @@ stopped tree; they leave a healthy tree running, including unsaved forms.
 
 ## Screenshots
 
-Current terminal UI, **v0.2.9**. The demo uses invented hosts and simulated SSH
+Current terminal UI, **v0.2.10**. The demo uses invented hosts and simulated SSH
 output; the tree, tabs, menus and dialogs are the running application.
 
 The sidebar keeps the session tree beside two open connection tabs:
@@ -138,6 +138,13 @@ type a custom terminfo name. Empty means inherit tmux's default.
 
 The saved setting is `terminal = "xterm"` under that session's `[session.ssh]`
 block. It takes effect on the next connection, including reconnects.
+
+If a device closes the connection before showing a password prompt, its login
+attempt limit may be exhausted by SSH-agent keys. In **Edit**, click **auth method**
+to choose `password`, then Save and reconnect from the session tree. This skips
+key offers and asks for a password directly in the terminal; GCRT never stores
+the password. `auto` keeps your usual SSH settings, and `publickey` restricts login
+to keys. The saved per-session setting is `auth_method = "password"`.
 
 `gcrt import securecrt` converts an existing SecureCRT configuration — its
 folder tree becomes the group tree, and stored passwords are never imported

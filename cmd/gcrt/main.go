@@ -16,7 +16,7 @@ import (
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
-const version = "0.2.9"
+const version = "0.2.10"
 
 func main() {
 	os.Exit(run())

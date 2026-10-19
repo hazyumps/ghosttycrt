@@ -1,6 +1,7 @@
 package transport_test
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -8,6 +9,69 @@ import (
 	"github.com/hazyumps/ghosttycrt/internal/session"
 	"github.com/hazyumps/ghosttycrt/internal/transport"
 )
+
+// Ask the installed SSH client to resolve the options without connecting.
+// This catches precedence bugs that a string-only argv assertion would miss.
+func TestSSHAuthMethodOverridesGlobalArguments(t *testing.T) {
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Skip("ssh not installed")
+	}
+	for _, method := range []string{"password", "publickey"} {
+		t.Run(method, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Transports.SSH.Binary = ssh
+			cfg.Transports.SSH.ExtraArgs = []string{"-o", "PubkeyAuthentication=yes", "-o", "PreferredAuthentications=publickey", "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no"}
+			s := &session.Session{Transport: session.TransportSSH, SSH: &session.SSHConfig{Host: "example.invalid", AuthMethod: method}}
+			tr, _ := transport.For(s, cfg)
+			argv, _, err := tr.Argv(s, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := append([]string{"-G", "-F", "/dev/null"}, argv[1:]...)
+			out, err := exec.Command(ssh, args...).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			values := map[string]string{}
+			for _, line := range strings.Split(string(out), "\n") {
+				key, value, _ := strings.Cut(line, " ")
+				values[key] = value
+			}
+			if method == "password" {
+				if got := values["pubkeyauthentication"]; got != "no" && got != "false" {
+					t.Fatalf("password login still offers keys: %q", got)
+				}
+				if values["preferredauthentications"] != "password,keyboard-interactive" {
+					t.Fatal("password must be tried first")
+				}
+				for _, key := range []string{"passwordauthentication", "kbdinteractiveauthentication"} {
+					if got := values[key]; got != "yes" && got != "true" {
+						t.Fatalf("%s = %q", key, got)
+					}
+				}
+			} else if values["preferredauthentications"] != "publickey" {
+				t.Fatal("publickey login must not fall back to password")
+			}
+		})
+	}
+}
+
+func TestSSHAuthMethodDefaultAndValidation(t *testing.T) {
+	s := &session.Session{Transport: session.TransportSSH, SSH: &session.SSHConfig{Host: "example.invalid"}}
+	tr, _ := transport.For(s, config.Default())
+	for _, method := range []string{"", "auto"} {
+		s.SSH.AuthMethod = method
+		argv, _, err := tr.Argv(s, "")
+		if err != nil || strings.Join(argv, " ") != "ssh example.invalid" {
+			t.Fatalf("auto changed normal SSH: %v %v", argv, err)
+		}
+	}
+	s.SSH.AuthMethod = "password; command"
+	if _, _, err := tr.Argv(s, ""); err == nil {
+		t.Fatal("accepted invalid authentication method")
+	}
+}
 
 func sshSession() *session.Session {
 	return &session.Session{

@@ -458,6 +458,9 @@ func (m *Model) viewForm() string {
 			if spec.key == "terminal" {
 				value = "(inherit)"
 			}
+			if spec.key == "auth_method" {
+				value = "(auto)"
+			}
 			vstyle = styleDim
 		}
 		if focused && f.editing {

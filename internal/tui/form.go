@@ -69,6 +69,7 @@ var (
 	parityChoices    = []string{"none", "even", "odd"}
 	flowChoices      = []string{"none", "software", "hardware"}
 	terminalChoices  = []string{"", "xterm", "xterm-256color", "vt100", "screen-256color", "tmux-256color"}
+	authChoices      = []string{"", "password", "publickey"}
 	onOff            = []string{"on", "off"}
 )
 
@@ -144,6 +145,7 @@ func (f *form) load(s *session.Session) {
 		f.values["jump"] = c.Jump
 		f.values["identity"] = c.Identity
 		f.values["terminal"] = c.Terminal
+		f.values["auth_method"] = c.AuthMethod
 	}
 	if c := s.Serial; c != nil {
 		f.values["device"] = c.Device
@@ -215,6 +217,7 @@ func (f *form) rebuild() {
 			formSpec{key: "jump", label: "jump", kind: fieldText},
 			formSpec{key: "identity", label: "identity", kind: fieldText},
 			formSpec{key: "terminal", label: "terminal", kind: fieldCycle, choices: terminalChoices},
+			formSpec{key: "auth_method", label: "auth method", kind: fieldCycle, choices: authChoices},
 		)
 	}
 
@@ -503,12 +506,13 @@ func (f *form) toSession(taken func(string) bool) *session.Session {
 	switch s.Transport {
 	case session.TransportSSH:
 		s.SSH = &session.SSHConfig{
-			Host:     strings.TrimSpace(f.value("host")),
-			Port:     atoi("port"),
-			User:     strings.TrimSpace(f.value("user")),
-			Jump:     strings.TrimSpace(f.value("jump")),
-			Identity: strings.TrimSpace(f.value("identity")),
-			Terminal: strings.TrimSpace(f.value("terminal")),
+			Host:       strings.TrimSpace(f.value("host")),
+			Port:       atoi("port"),
+			User:       strings.TrimSpace(f.value("user")),
+			Jump:       strings.TrimSpace(f.value("jump")),
+			Identity:   strings.TrimSpace(f.value("identity")),
+			Terminal:   strings.TrimSpace(f.value("terminal")),
+			AuthMethod: strings.TrimSpace(f.value("auth_method")),
 		}
 	case session.TransportSerial:
 		s.Serial = &session.SerialConfig{

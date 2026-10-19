@@ -58,6 +58,12 @@ ssh [-p <port>] [-i <identity>] [-J <jump>] [-o SendEnv=…] <user>@<host>
   changing other sessions, tmux's global default, or remote configuration.
 - `extra_args` from `config.toml` are appended, so `ServerAliveInterval` and
   friends are set in one place.
+- `auth_method` defaults to `auto`, preserving normal SSH authentication.
+  `password` disables public-key offers and enables password/keyboard-interactive
+  login; `publickey` offers keys only. This per-session choice precedes global
+  extra args because OpenSSH uses the first value. Password mode avoids exhausting
+  an appliance's login-attempt limit on unrelated agent keys. SSH prompts in the
+  terminal; no password is saved or passed by GCRT.
 - Secret handling: only when the session authenticates by password (see
   `05-credentials.md`).
 

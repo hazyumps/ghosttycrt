@@ -2,6 +2,7 @@
 /gcrt
 /dist/
 *.test
+__pycache__/
 
 # editor / os
 .DS_Store

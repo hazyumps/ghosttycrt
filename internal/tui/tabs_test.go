@@ -183,7 +183,7 @@ func TestTabsBindReturnsToTheTreeWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(out); !strings.Contains(got, "select-window -t gscrt/workspace:tree") {
+	if got := strings.ReplaceAll(string(out), "\"", ""); !strings.Contains(got, "select-window -t %0") {
 		t.Fatalf("prefix t should select the tree window in tabs layout:\n%s", got)
 	}
 }

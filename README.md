@@ -6,8 +6,9 @@ session tree, and logging in one TUI, hosted on Ghostty.
 Replaces SecureCRT for the parts that actually get used daily, and stays out of
 the terminal-emulator business because Ghostty already does that better.
 
-**Status:** M1 complete, plus `workspace` mode — **this is already a SecureCRT
-replacement for SSH.** `enter` creates or reattaches a tmux session and hands
+**Status:** SSH session management with workspace recovery, Quick Connect and
+reconnect. SecureCRT ease-of-use parity is still in progress. `enter` creates
+or reattaches a tmux session and hands
 you the terminal; the session outlives `gcrt` and Ghostty. With
 `display_mode = "workspace"` the tree lives in a tmux window of its own and
 every connection gets its own tab (`workspace_layout = "tabs"`), or the tree
@@ -18,6 +19,42 @@ it is over, and clicking a host opens it. Sessions can be created,
 edited, duplicated, pinned and removed from the UI, with atomic writes to
 `sessions.toml`. Serial and logging are next
 ([`spec/09-milestones.md`](spec/09-milestones.md)).
+
+## Everyday controls
+
+| Action | Control |
+|---|---|
+| Show or restore the session manager | Click **Sessions · F2** on the bottom bar, or press `F2` |
+| Quick Connect | Click **Quick** in the tree header, or press `Q` / `Ctrl-O` |
+| New saved session | Click **+** (**New** in a wide pane), or press `n` |
+| Edit, duplicate, pin or remove a session | Right-click its tree entry and choose the action |
+| Reconnect a saved session | Select it and press `R`, or choose **Reconnect** from its right-click menu |
+| Reconnect an open tab | Right-click its tab and choose **Reconnect** |
+| Save or leave an editor/dialog | Click **Save**, **Cancel**, **Close** or **No**; keyboard shortcuts still work |
+| Leave connections running and close the workspace view | `q` from the tree, or `Ctrl-b d` |
+
+Quick Connect accepts `host`, `user@host`, `host:2222`, and
+`user@[2001:db8::1]:2222`. New addresses are saved under **Quick Connect**;
+matching saved sessions reuse their settings. SSH still handles authentication
+through its agent, SSH config, key file or password prompt.
+
+A reconnect interrupts the selected connection, so a live connection asks for
+confirmation. Other connections stay open. A disconnected saved session can be
+reconnected directly.
+
+Confirmations have clickable **Yes** and **No** buttons. Pressing Enter in a
+confirmation cancels; blank space beside a button cannot activate it. Tab
+reconnect/close confirmations are mouse menus too. Use the wheel to scroll a
+short menu or editor; its action buttons stay visible.
+
+The idle logo is static, with a hidden cursor. It redraws only when the pane is
+resized or returns from a connection. An existing workspace updates its display
+wrapper when the session manager starts with a new build, preserving SSH tabs.
+
+Reopening `gcrt` restores a stopped tree before attaching. From another terminal,
+`gcrt recover` restores and focuses the tree without attaching that terminal.
+Both preserve running connections. `Ctrl-b t` and `Ctrl-b R` also restore a
+stopped tree; they leave a healthy tree running, including unsaved forms.
 
 ## Screenshots
 
@@ -47,6 +84,21 @@ real session appears in them.
 
 ## Build and run
 
+On macOS, install an application launcher after installing `gcrt`:
+
+```sh
+bash scripts/install-macos-launcher.sh
+```
+
+This creates `~/Applications/GCRT.app` with its own icon. Open **GCRT** from
+Spotlight or Finder, or drag the app into the Dock. It opens the saved workspace,
+reusing any running connections. It bundles a private copy of Ghostty under
+GCRT's own app identity, so its Dock icon stays separate from ordinary Ghostty.
+The launcher uses the installed `gcrt`, so future binary updates do not require
+rebuilding it. To update the bundled terminal after upgrading Ghostty, move the
+old GCRT.app aside and run the installer again. Automatic Ghostty updates are
+disabled inside GCRT to preserve its app identity.
+
 ```
 go build ./cmd/gcrt          # or: go run ./cmd/gcrt tui
 go run ./cmd/gcrt check      # validate config + sessions, no TUI
@@ -54,6 +106,11 @@ go run ./cmd/gcrt import securecrt           # dry run
 go run ./cmd/gcrt import securecrt --write   # replaces sessions.toml, after a backup
 go test ./...
 ```
+
+For the tab-menu mouse regression check, build `gcrt` and run
+`python3 scripts/check-menu-mouse.py /absolute/path/to/gcrt`. It uses private
+configuration and tmux sockets with fake SSH processes, and checks pointer
+movement, cancellation, and closing only the chosen session.
 
 `gcrt` reads `~/.config/ghosttycrt/{config.toml,sessions.toml}`. Point it
 elsewhere while trying it out with `-config-dir examples`.

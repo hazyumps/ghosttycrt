@@ -3,6 +3,30 @@
 Build the smallest usable slice, exercise it, then add. Each milestone ends in
 something you would actually use.
 
+## Usability priority — 2026-10-19
+
+Patrick's target is SecureCRT ease of use. He selected **Quick Connect and
+reconnect** as the next priority after recovering the session manager.
+
+- [x] `gcrt` restores a stopped tree before attaching; `gcrt recover` works
+  from another terminal without attaching it.
+- [x] A persistent **Sessions · F2** control restores/focuses the tree.
+- [x] `Ctrl-C` cancels work in the workspace UI instead of exiting its tree.
+- [x] **Quick Connect**, `Q` / `Ctrl-O`: SSH address input, saved in the tree;
+  matching existing sessions retain their settings.
+- [x] **Reconnect**, `R`: restart the selected session, confirming if it is
+  live. Open tabs offer reconnect and confirmed close on right-click.
+- [x] Clickable confirmation buttons, editor Save/Cancel, Quick Connect Cancel,
+  Help Close, filter controls, and session Edit/Duplicate/Pin menu actions.
+- [x] Static idle logo: no output between resize/connection transitions;
+  existing content wrappers upgrade without stopping SSH processes.
+- [ ] Serial consoles, session logging and credential-provider login remain
+  implementation gaps, as described in M2–M4 below.
+
+Reference for the ease-of-use target:
+[SecureCRT session management](https://www.vandyke.com/products/securecrt/session_management.html)
+(saved sessions, Quick Connect, folders, tabs and tiled sessions).
+
 ## M0 — skeleton (a day)
 
 - [x] Go module, `cmd/gcrt`, `internal/{config,session,tui,tmux}`
@@ -24,8 +48,8 @@ Done when: `gcrt` shows a hand-written `sessions.toml` as a browsable tree.
 - [x] capability strip: tmux, ssh
 
 Done when: `enter` on an SSH host drops you in, `Ctrl-b d` brings you back, and
-the session is still there after quitting Ghostty. **This is already a
-SecureCRT replacement for SSH.**
+the session is still there after quitting Ghostty. This establishes SSH session
+management; the usability and workflow milestones remain necessary.
 
 **Landed 2026-09-16.** `d`'s "kill and remove from the tree" option is deferred
 to M2, which is where atomic `sessions.toml` writes live.

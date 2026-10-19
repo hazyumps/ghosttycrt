@@ -39,6 +39,7 @@ type form struct {
 	specs  []formSpec
 	values map[string]string
 	index  int
+	top    int
 
 	editing bool
 	buffer  string
@@ -332,6 +333,15 @@ func (f *form) commitEdit() {
 // form does not use, so the caller can ignore them rather than act on them.
 func (f *form) update(msg tea.KeyMsg) (save bool, close bool, handled bool) {
 	key := msg.String()
+	if key == "ctrl+s" {
+		if f.editing {
+			f.commitEdit()
+			if f.editing { // invalid input stays editable
+				return false, false, true
+			}
+		}
+		return true, false, true
+	}
 
 	if f.dropdown {
 		switch key {
@@ -409,19 +419,19 @@ func (f *form) update(msg tea.KeyMsg) (save bool, close bool, handled bool) {
 	return false, false, true
 }
 
-// mouse handles a click or a wheel while the form is open. A click selects a
-// field; a second click on the selected one opens it, so the picker is at most
-// two clicks away and a click on a dropdown entry chooses it.
+// A click opens a field or chooses a dropdown entry. The wheel scrolls fields
+// or an open picker, committing valid text before leaving the current field.
 func (f *form) mouse(msg tea.MouseMsg) (save, close, handled bool) {
-	switch msg.Button {
-	case tea.MouseButtonWheelUp:
-		if !f.editing && !f.dropdown {
-			f.move(-1)
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		delta := 1
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -1
 		}
-		return false, false, true
-	case tea.MouseButtonWheelDown:
-		if !f.editing && !f.dropdown {
-			f.move(1)
+		if f.dropdown {
+			f.dropIndex = max(0, min(len(f.groupChoices)-1, f.dropIndex+delta))
+		} else {
+			f.commitEdit()
+			f.move(delta)
 		}
 		return false, false, true
 	}
@@ -444,15 +454,15 @@ func (f *form) mouse(msg tea.MouseMsg) (save, close, handled bool) {
 		}
 		if f.editing {
 			f.commitEdit()
+			if f.editing {
+				return false, false, true
+			}
 		}
 		if f.dropdown {
 			f.dropdown = false
 		}
-		already := i == f.index
 		f.index = i
-		if already {
-			f.activate()
-		}
+		f.activate()
 		return false, false, true
 	}
 	return false, false, true

@@ -36,7 +36,9 @@ func unitSocket() string { return fmt.Sprintf("gcrt-unit-%d", os.Getpid()) }
 
 func newModel(t *testing.T, file *session.File, w, h int) *tui.Model {
 	t.Helper()
-	m := tui.New(config.Default(), file, config.DefaultPaths(), session.Problems{}, tmux.New(unitSocket()))
+	paths := config.DefaultPaths()
+	paths.Config = t.TempDir()
+	m := tui.New(config.Default(), file, paths, session.Problems{}, tmux.New(unitSocket()))
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	return updated.(*tui.Model)
 }

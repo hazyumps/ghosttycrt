@@ -16,7 +16,7 @@ import (
 	"github.com/hazyumps/ghosttycrt/internal/tui"
 )
 
-const version = "0.2.5"
+const version = "0.2.8"
 
 func main() {
 	os.Exit(run())
@@ -43,7 +43,7 @@ func run() int {
 	var showVersion bool
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: gcrt [tui|check|import] [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "usage: gcrt [tui|recover|check|import] [flags]\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -51,6 +51,16 @@ func run() int {
 	}
 	if showVersion {
 		fmt.Println("gcrt " + version)
+		return 0
+	}
+	if cmd == "recover" {
+		client := tmux.New(tmux.Socket)
+		if err := client.RecoverTree(treeCommand(paths)); err != nil {
+			fmt.Fprintln(os.Stderr, "gcrt: could not restore the session manager:", err)
+			fmt.Fprintln(os.Stderr, "      run gcrt to start a workspace if none is open.")
+			return 1
+		}
+		fmt.Println("Session manager restored. Connections were kept running.")
 		return 0
 	}
 
@@ -132,9 +142,12 @@ func browse(cfg *config.Config, paths config.Paths, file *session.File, problems
 // and every connection as panes. -A attaches when the workspace already exists,
 // so re-running gcrt returns to the sessions you left behind.
 func bootstrapWorkspace(paths config.Paths) int {
-	exe, err := os.Executable()
-	if err != nil {
-		exe = "gcrt"
+	client := tmux.New(tmux.Socket)
+	if client.HasTarget(tmux.WorkspaceSession) {
+		if err := client.RecoverTree(treeCommand(paths)); err != nil {
+			fmt.Fprintln(os.Stderr, "gcrt: could not restore the session manager:", err)
+			return 1
+		}
 	}
 
 	args := []string{"-L", tmux.Socket,
@@ -143,11 +156,7 @@ func bootstrapWorkspace(paths config.Paths) int {
 	if wd, err := os.Getwd(); err == nil {
 		args = append(args, "-c", wd)
 	}
-	args = append(args, exe, "tui",
-		"-config-dir", paths.Config,
-		"-state-dir", paths.State,
-		"-data-dir", paths.Data,
-		"-cache-dir", paths.Cache)
+	args = append(args, treeCommand(paths)...)
 
 	cmd := exec.Command("tmux", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -160,4 +169,17 @@ func bootstrapWorkspace(paths config.Paths) int {
 		return 1
 	}
 	return 0
+}
+
+func treeCommand(paths config.Paths) []string {
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "gcrt"
+	}
+
+	return []string{exe, "tui",
+		"-config-dir", paths.Config,
+		"-state-dir", paths.State,
+		"-data-dir", paths.Data,
+		"-cache-dir", paths.Cache}
 }

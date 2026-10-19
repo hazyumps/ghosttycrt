@@ -2,7 +2,6 @@ package tmux_test
 
 import (
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -239,10 +238,13 @@ func TestConfigureBindsAKeyBackToTheTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := regexp.MustCompile(`(?m)^bind-key\s+-T prefix\s+t\s+select-pane -t "?` + regexp.QuoteMeta(tree) + `"?`)
-	if !want.Match(bind) {
-		t.Fatalf("prefix t is not bound to the tree pane %s:\n%s", tree, bind)
+	for _, line := range strings.Split(string(bind), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 3 && fields[3] == "t" && strings.Contains(strings.ReplaceAll(line, "\"", ""), "select-pane -t "+tree) {
+			return
+		}
 	}
+	t.Fatalf("prefix t is not bound to the tree pane %s:\n%s", tree, bind)
 }
 
 // tmux stores a command wrapped in braces inside one argument as a *string*
@@ -283,7 +285,7 @@ func TestTabMenuCommandsAreNotWrappedInBraces(t *testing.T) {
 	}
 	// The title's #{window_name} has braces and that is fine; what must not is
 	// a command wrapped in them, which is what the bare form avoids.
-	for _, want := range []string{"s select-window", "X kill-window"} {
+	for _, want := range []string{"s select-window", "Reconnect", "Yes, reconnect", "No (cancel)", "Yes, close", "kill-window"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the menu should pass %q bare, not wrapped in braces:\n%s", want, line)
 		}

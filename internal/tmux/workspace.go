@@ -134,6 +134,11 @@ func (c *Client) Panes() ([]Pane, error) {
 // Configure applies the workspace-wide tmux settings. It is idempotent and safe
 // to call on every startup, including a reattach.
 func (c *Client) Configure(treeWidth int, treePaneID string) error {
+	// Install recovery before layout work: even a failed setup must leave a
+	// way back to the session manager.
+	if err := c.ConfigureTreeControls(treePaneID); err != nil {
+		return err
+	}
 	opts := [][2]string{
 		{"mouse", "on"},
 		// "failed" not "on": exiting a session cleanly should close it, while a
@@ -198,32 +203,12 @@ func (c *Client) Configure(treeWidth int, treePaneID string) error {
 	if err := c.silenceTmuxMenus(); err != nil {
 		return err
 	}
-
-	if treePaneID != "" {
-		// The tree pane is not a session, so it should never quietly vanish:
-		// keep it when it exits, whatever the exit was, and give a key that
-		// brings it back. Losing the tree otherwise leaves the window with no
-		// way to manage anything.
-		if _, err := c.run("set-option", "-p", "-t", treePaneID, "remain-on-exit", "on"); err != nil {
-			return err
-		}
-		if _, err := c.run("bind-key", "-T", "prefix", "R",
-			"respawn-pane", "-k", "-t", treePaneID); err != nil {
-			return err
-		}
-
-		// A quick way back to the tree from a busy session.
-		args := []string{"bind-key", "-T", "prefix", "t"}
-		if c.layout() == LayoutTabs {
-			// select-pane does not cross windows, so target the window.
-			args = append(args, "select-window", "-t", WorkspaceSession+":"+TreeWindow)
-		} else {
-			args = append(args, "select-pane", "-t", treePaneID)
-		}
-		if _, err := c.run(args...); err != nil {
+	if c.layout() == LayoutTabs {
+		if err := c.configureConnectionMenu(); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 

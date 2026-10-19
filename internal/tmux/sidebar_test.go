@@ -21,9 +21,7 @@ func TestContentScriptIsValidShell(t *testing.T) {
 	}
 }
 
-// The idle screen repeats on a timer so it settles at the right size, which is
-// only safe because it clears first — the version that printed without clearing
-// is what piled copies up the pane.
+// Clear only when drawing a changed frame, so resize never piles copies up.
 func TestContentScriptClearsBeforeDrawing(t *testing.T) {
 	c := New("gcrt-test")
 	script := c.contentScript()
@@ -37,7 +35,7 @@ func TestContentScriptClearsBeforeDrawing(t *testing.T) {
 		t.Error("the clear must come before the wordmark is written")
 	}
 	if !strings.Contains(script, "sleep 0.5") {
-		t.Error("the idle screen should pace its redraws")
+		t.Error("the connection/resize check should be paced")
 	}
 	for _, line := range idleArt {
 		if !strings.Contains(script, strings.TrimSpace(line)) {

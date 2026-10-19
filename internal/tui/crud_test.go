@@ -260,7 +260,7 @@ func TestForgetRemovesTheRecord(t *testing.T) {
 	if out := m.View(); !strings.Contains(out, "Forget") {
 		t.Fatalf("the menu should offer Forget:\n%s", out)
 	}
-	m = pressKey(t, m, tea.KeyEnter) // Forget is the only item when not running
+	m, _ = clickAt(t, m, 8, rowOf(t, m, "Forget"))
 	if out := m.View(); !strings.Contains(out, "Remove k3s-01") {
 		t.Fatalf("expected a confirmation:\n%s", out)
 	}

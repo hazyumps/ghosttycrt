@@ -54,9 +54,12 @@ type Model struct {
 	menuHits []int
 	confirm  *confirmState
 	form     *form
+	quick    *quickConnect
+	buttons  []buttonHit
 
-	status string
-	errMsg string
+	status   string
+	errMsg   string
+	setupErr string
 
 	width  int
 	height int
@@ -127,16 +130,12 @@ func (m *Model) EnableWorkspace(paneID string) {
 	m.client.SetLayout(m.layout())
 	m.treeActive = true
 
-	// A workspace outlives the binary that started it: re-running gcrt attaches
-	// to the existing tree process, so an upgrade silently does nothing until
-	// the workspace is shut down. Say so rather than leave it a mystery.
 	if prev := m.client.TreeVersion(); prev != "" && prev != Version {
-		m.status = "this workspace is running gcrt " + prev +
-			" — shut it down (d → Shut down workspace) to move to " + Version
+		m.status = "session manager updated to " + Version
 	}
 	_ = m.client.SetTreeVersion(Version)
 	if err := m.client.Configure(m.treeWidth, paneID); err != nil {
-		m.errMsg = err.Error()
+		m.setupErr = err.Error()
 	}
 	m.refresh()
 }
@@ -255,7 +254,7 @@ func (m *Model) selectedSession() *session.Session {
 }
 
 func (m *Model) refresh() {
-	m.errMsg = ""
+	m.errMsg = m.setupErr
 	if !m.client.Available() {
 		return
 	}
@@ -331,15 +330,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case attachDoneMsg:
+		m.refresh()
 		if msg.err != nil {
 			m.errMsg = "attach: " + msg.err.Error()
 		} else {
 			m.status = "detached — Ctrl-b d always returns to the tree"
 		}
-		m.refresh()
 		return m, nil
 
 	case workspaceShownMsg:
+		m.refresh()
 		if msg.err != nil {
 			m.errMsg = msg.err.Error()
 		} else if m.tabbed() {
@@ -347,7 +347,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = msg.slug + " is open beside the tree"
 		}
-		m.refresh()
 		return m, nil
 
 	case refreshTickMsg:
@@ -358,6 +357,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMouse(msg)
 
 	case tea.KeyMsg:
+		// Ctrl-C cancels UI work in the session manager. It must never leave
+		// a dead tree behind. SSH panes still receive Ctrl-C normally.
+		if m.workspace && msg.String() == "ctrl+c" {
+			m.closeQuickConnect()
+			if m.form != nil {
+				m.closeForm()
+			}
+			m.menu, m.confirm = nil, nil
+			m.help = false
+			if m.filtering {
+				m.filtering, m.filter = false, ""
+				m.rebuild()
+				m.cursorToFirstSession()
+			}
+			m.status = "cancelled — q detaches; connections keep running"
+			return m, nil
+		}
 		// Bubbletea delivers several keystrokes as one message when they arrive
 		// in a single read — a paste, or fast typing. String() would then be
 		// "jj" and match no case, so replay them one at a time.
@@ -374,6 +390,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.mouseOver = false
+		if m.quick != nil {
+			return m.updateQuickConnect(msg)
+		}
 
 		if m.form != nil {
 			save, close, _ := m.form.update(msg)
@@ -531,6 +550,12 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		m.openForm(nil, true)
+	case "Q", "ctrl+o":
+		return m, m.openQuickConnect()
+	case "R":
+		if s := m.selectedSession(); s != nil {
+			return m, m.requestReconnect(s)
+		}
 	case "e":
 		if s := m.selectedSession(); s != nil {
 			m.openForm(s, false)
@@ -590,6 +615,19 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.hoverX, m.hoverY, m.mouseOver = msg.X, msg.Y, true
 		return m, nil
 	}
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		// Recompute after resize or a view transition, even if no frame has
+		// reached the terminal yet. Never retain a previous dialog's actions.
+		m.View()
+		for _, hit := range m.buttons {
+			if msg.Y == hit.y && msg.X >= hit.x && msg.X < hit.end {
+				return m, hit.run()
+			}
+		}
+	}
+	if m.quick != nil {
+		return m, nil
+	}
 
 	if m.form != nil {
 		save, closed, _ := m.form.mouse(msg)
@@ -601,16 +639,22 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if m.confirm != nil || m.filtering {
+	if m.confirm != nil {
 		return m, nil
 	}
 
 	// Once a menu is up it stays up until it is used or dismissed: a click
 	// elsewhere does nothing rather than knocking it over.
 	if m.menu != nil {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.menu.index = max(0, m.menu.index-1)
+		case tea.MouseButtonWheelDown:
+			m.menu.index = min(len(m.menu.items)-1, m.menu.index+1)
+		}
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			for i, row := range m.menuHits {
-				if msg.Y != row || i >= len(m.menu.items) {
+				if msg.Y != row || msg.X < 3 || msg.X >= m.width-3 || i >= len(m.menu.items) {
 					continue
 				}
 				item := m.menu.items[i]
@@ -643,6 +687,10 @@ func (m *Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	}
+	// Clicking a result accepts the current filter and uses the tree normally.
+	if m.filtering && msg.Action == tea.MouseActionPress && (msg.Button == tea.MouseButtonLeft || msg.Button == tea.MouseButtonRight) {
+		m.filtering = false
 	}
 
 	// Right-clicking a session opens its action menu, where it can be closed.
@@ -826,12 +874,14 @@ func (m *Model) openSessionMenu() {
 	}
 	// Forget is always offered: a session that is not running still has a
 	// record, and this is the only way to remove it.
+	items = append(items, menuItem{label: "Reconnect", hint: "start a fresh connection", run: func() tea.Cmd { return m.requestReconnect(sess) }})
 	items = append(items, menuItem{
 		label:       "Forget",
 		hint:        "remove it from sessions.toml",
 		destructive: true,
 		run:         func() tea.Cmd { m.askForget(sess); return nil },
 	})
+	items = append(items, m.editActions(sess)...)
 
 	m.menu = &menuState{title: sess.Name, items: items}
 }
@@ -892,6 +942,7 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 		})
 	}
 
+	items = append(items, menuItem{label: "Reconnect", hint: "start a fresh connection", run: func() tea.Cmd { return m.requestReconnect(s) }})
 	items = append(items, menuItem{
 		label:       "Forget",
 		hint:        "remove it from sessions.toml",
@@ -899,6 +950,7 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 		run:         func() tea.Cmd { m.askForget(s); return nil },
 	})
 
+	items = append(items, m.editActions(s)...)
 	items = append(items, menuItem{
 		label:       "Shut down workspace",
 		hint:        "stop everything and exit",
@@ -907,6 +959,23 @@ func (m *Model) openWorkspaceMenu(s *session.Session) {
 	})
 
 	m.menu = &menuState{title: s.Name, items: items}
+}
+
+func (m *Model) editActions(s *session.Session) []menuItem {
+	pin := "Pin"
+	if s.Pinned {
+		pin = "Unpin"
+	}
+	return []menuItem{
+		{label: "Edit", run: func() tea.Cmd { m.openForm(s, false); return nil }},
+		{label: "Duplicate", run: func() tea.Cmd {
+			dup := *s
+			dup.ID, dup.Slug, dup.Name = "", "", s.Name+" copy"
+			m.openForm(&dup, true)
+			return nil
+		}},
+		{label: pin, run: func() tea.Cmd { m.togglePin(); return nil }},
+	}
 }
 
 func (m *Model) hidePane(s *session.Session, pane tmux.Pane) {

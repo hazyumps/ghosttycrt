@@ -36,10 +36,13 @@ var (
 )
 
 func (m *Model) View() string {
+	m.buttons = nil
 	if m.width == 0 {
 		return "loading…"
 	}
 	switch {
+	case m.quick != nil:
+		return m.viewQuickConnect()
 	case m.form != nil:
 		return m.viewForm()
 	case m.confirm != nil:
@@ -68,7 +71,20 @@ type barItem struct {
 }
 
 func (m *Model) barActions() []barItem {
+	if m.filtering || m.filter != "" {
+		return []barItem{
+			{label: "Done", title: "Done", run: func() tea.Cmd { m.filtering = false; return nil }},
+			{label: "Clear", title: "Clear", run: func() tea.Cmd {
+				m.filter, m.filtering = "", false
+				m.rebuild()
+				m.cursorToFirstSession()
+				return nil
+			}},
+		}
+	}
 	items := []barItem{
+		{label: "Quick", title: "Quick Connect", run: m.openQuickConnect},
+		{label: "+", title: "New", run: func() tea.Cmd { m.openForm(nil, true); return nil }},
 		{label: "?", title: "Help", emphasis: true, run: func() tea.Cmd {
 			m.help = true
 			m.helpTop = 0
@@ -90,7 +106,7 @@ func (m *Model) barActions() []barItem {
 // renderBar draws the menu bar and reports where each item landed. Rendering
 // and hit-testing share this function so they cannot drift apart.
 func (m *Model) renderBar() (string, []barItem) {
-	wide := m.width >= 50
+	wide := m.width >= 80
 	brand := " gcrt "
 	if wide {
 		brand = " ghosttycrt "
@@ -352,9 +368,9 @@ func (m *Model) viewFooter() string {
 		case m.filtering:
 			return clip(styleDim.Render(" type to filter  enter keep  esc clear"), m.width)
 		case m.workspace:
-			return clip(styleDim.Render(" enter open  d kill  / filter  q detach"), m.width)
+			return clip(styleText.Render(" Click: open  Right-click: actions"), m.width)
 		default:
-			return clip(styleDim.Render(" enter connect  d kill  / filter  q quit"), m.width)
+			return clip(styleText.Render(" Click: open  Right-click: actions"), m.width)
 		}
 	}
 
@@ -386,7 +402,7 @@ func (m *Model) viewEmpty() string {
 		styleTitle.Render("No sessions yet."),
 		"",
 		styleText.Render("  n   add one"),
-		styleText.Render("  i   import from ~/.ssh/config"),
+		styleText.Render("  Q   Quick Connect (SSH)"),
 		"",
 		styleDim.Render("  config  " + m.paths.SessionsFile()),
 		"",
@@ -398,7 +414,7 @@ func (m *Model) viewEmpty() string {
 			lines = append(lines, styleErr.Render("  ✗ "+e.Error()))
 		}
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+	return lipgloss.JoinVertical(lipgloss.Left, m.viewHeader(), strings.Join(lines, "\n"))
 }
 
 // viewForm is the session editor: a list of fields, edited in place, with the
@@ -449,9 +465,6 @@ func (m *Model) viewForm() string {
 
 		f.rows[i] = len(lines)
 		field := cursor + styleDim.Width(14).Render(spec.label) + vstyle.Render(value)
-		if m.hovering(len(lines), 0, m.width) {
-			field = styleHover.Render(padRight(field, m.innerWidth()))
-		}
 		lines = append(lines, field)
 
 		if spec.kind == fieldGroup && f.dropdown {
@@ -471,16 +484,40 @@ func (m *Model) viewForm() string {
 				}
 				f.dropRows = append(f.dropRows, len(lines))
 				entry := mark + style.Render(label)
-				if m.hovering(len(lines), 0, m.width) {
-					entry = styleHover.Render(padRight(entry, m.innerWidth()))
-				}
 				lines = append(lines, entry)
 			}
 		}
 	}
 
-	body := make([]string, 0, len(lines))
-	for _, l := range lines {
+	// Keep the selected field/dropdown entry visible, with fixed Save and
+	// Cancel controls even when the editor is taller than the terminal.
+	available := max(1, m.height-5)
+	focus := f.rows[f.index] - 3
+	if f.dropdown && f.dropIndex < len(f.dropRows) {
+		focus = f.dropRows[f.dropIndex] - 3
+	}
+	if focus < f.top {
+		f.top = focus
+	}
+	if focus >= f.top+available {
+		f.top = focus - available + 1
+	}
+	f.top = max(0, min(f.top, len(lines)-3-available))
+	start, end := 3+f.top, min(len(lines), 3+f.top+available)
+	for _, rows := range [][]int{f.rows, f.dropRows} {
+		for i, row := range rows {
+			rows[i] = -1
+			if row >= start && row < end {
+				rows[i] = row - f.top
+			}
+		}
+	}
+	visible := append(append([]string{}, lines[:3]...), lines[start:end]...)
+	body := make([]string, 0, m.height)
+	for row, l := range visible {
+		if row >= 3 && m.hovering(row, 0, m.width) {
+			l = styleHover.Render(padRight(l, m.width))
+		}
 		body = append(body, padRight(clip(l, m.width), m.width))
 	}
 
@@ -495,13 +532,23 @@ func (m *Model) viewForm() string {
 		hint = " ✗ " + f.err
 	}
 
-	out := strings.Join(body, "\n") + "\n"
-	// Trim so the hint stays on screen on a short pane.
-	for strings.Count(out, "\n") >= m.height {
-		body = body[:len(body)-1]
-		out = strings.Join(body, "\n") + "\n"
+	for len(body) < m.height-2 {
+		body = append(body, "")
 	}
-	return out + padRight(clip(styleDim.Render(hint), m.width), m.width)
+	body = append(body, padRight(clip(styleDim.Render(hint), m.width), m.width))
+	body = append(body, " "+m.buttonLine([]button{
+		{label: "Save", run: func() tea.Cmd {
+			if f.editing {
+				f.commitEdit()
+				if f.editing {
+					return nil
+				}
+			}
+			return m.saveForm()
+		}},
+		{label: "Cancel", run: func() tea.Cmd { m.closeForm(); return nil }},
+	}, 1, len(body), m.width-1))
+	return strings.Join(body, "\n")
 }
 
 func padRight(s string, width int) string {
@@ -516,8 +563,12 @@ func (m *Model) viewMenu() string {
 	inner := m.innerWidth()
 	lines := []string{styleDim.Render(clip("choose an action", inner))}
 	var itemLines []int
+	count := max(1, m.innerHeight()-5)
+	start := max(0, min(m.menu.index-count+1, len(m.menu.items)-count))
+	end := min(len(m.menu.items), start+count)
 
-	for i, item := range m.menu.items {
+	for i := start; i < end; i++ {
+		item := m.menu.items[i]
 		cursor := "  "
 		if i == m.menu.index {
 			cursor = styleTitle.Render("▸ ")
@@ -542,8 +593,16 @@ func (m *Model) viewMenu() string {
 	}
 	lines = append(lines, "", styleDim.Render(clip(hint, inner)))
 
-	rendered, rows := m.modal(m.menu.title, lines, itemLines, true)
-	m.menuHits = rows
+	rendered, rows := m.modalWithActions(m.menu.title, lines, itemLines, true, []button{
+		{label: "Cancel", run: func() tea.Cmd { m.menu = nil; return nil }},
+	})
+	m.menuHits = make([]int, len(m.menu.items))
+	for i := range m.menuHits {
+		m.menuHits[i] = -1
+	}
+	for i, row := range rows {
+		m.menuHits[start+i] = row
+	}
 	return rendered
 }
 
@@ -553,8 +612,15 @@ func (m *Model) viewConfirm() string {
 	for _, l := range wrap(m.confirm.prompt, inner) {
 		lines = append(lines, styleText.Render(clip(l, inner)))
 	}
-	lines = append(lines, "", styleDim.Render(clip("y: yes      N: no (default)", inner)))
-	rendered, _ := m.modal("", lines, nil, false)
+	lines = append(lines, "", styleText.Render(clip("Enter or Esc: No", inner)))
+	rendered, _ := m.modalWithActions("", lines, nil, false, []button{
+		{label: "Yes", run: func() tea.Cmd {
+			run := m.confirm.yes
+			m.confirm = nil
+			return run()
+		}},
+		{label: "No", run: func() tea.Cmd { m.confirm = nil; return nil }},
+	})
 	return rendered
 }
 
@@ -574,6 +640,8 @@ func (m *Model) helpSections() []helpSection {
 			{"esc", "clear the filter"},
 		}},
 		{title: "Sessions", rows: [][2]string{
+			{"Q / Ctrl-O", "Quick Connect: user@host[:port]"},
+			{"R", "reconnect the selected session"},
 			{"enter", "connect (attach-or-create)"},
 			{"n / e / c", "new / edit / duplicate"},
 			{"space", "pin or unpin"},
@@ -598,15 +666,18 @@ func (m *Model) helpSections() []helpSection {
 
 	if m.workspace {
 		sections = append([]helpSection{{title: "Workspace", rows: [][2]string{
+			{"F2 / Sessions", "show or restore the session manager"},
 			{"Ctrl-b t", "back to the tree from a session"},
 			{"Ctrl-b d", "detach the whole workspace"},
-			{"Ctrl-b R", "respawn the tree if it ever dies"},
+			{"Ctrl-b R", "restore a stopped session manager"},
+			{"Ctrl-C", "cancel the current menu, filter or form"},
 			{"Ctrl-b z", "zoom a pane to fill the window"},
 		}}}, sections...)
 	}
 
 	sections = append(sections, helpSection{title: "Commands", rows: [][2]string{
 		{"gcrt", "start the tree"},
+		{"gcrt recover", "restore the tree; keep connections"},
 		{"gcrt check", "validate config and sessions"},
 		{"gcrt import", "import SecureCRT sessions"},
 	}})
@@ -645,7 +716,7 @@ func (m *Model) helpContent() []string {
 
 // helpWindow is how many content lines fit in the box.
 func (m *Model) helpWindow() int {
-	n := m.innerHeight() - 3 // title, blank, hint
+	n := m.innerHeight() - 4 // title, blank, hint, Close button
 	if n < 1 {
 		n = 1
 	}
@@ -689,7 +760,9 @@ func (m *Model) viewHelp() string {
 	}
 	visible = append(visible, "", styleDim.Render(clip(hint, inner)))
 
-	rendered, _ := m.modal("ghosttycrt — help", visible, nil, false)
+	rendered, _ := m.modalWithActions("ghosttycrt — help", visible, nil, false, []button{
+		{label: "Close", run: func() tea.Cmd { m.help = false; return nil }},
+	})
 	return rendered
 }
 
@@ -718,6 +791,10 @@ func (m *Model) innerHeight() int {
 // actually drawn; the box is positioned here rather than by lipgloss.Place so
 // that arithmetic is not guessed at from the outside.
 func (m *Model) modal(title string, lines []string, hitLines []int, hover bool) (string, []int) {
+	return m.modalWithActions(title, lines, hitLines, hover, nil)
+}
+
+func (m *Model) modalWithActions(title string, lines []string, hitLines []int, hover bool, actions []button) (string, []int) {
 	inner := m.innerWidth()
 	height := m.innerHeight()
 
@@ -730,11 +807,19 @@ func (m *Model) modal(title string, lines []string, hitLines []int, hover bool) 
 	for _, l := range lines {
 		content = append(content, clip(l, inner))
 	}
-	if len(content) > height {
-		content = content[:height]
+	limit := height
+	if len(actions) > 0 {
+		limit--
+	}
+	if len(content) > max(0, limit) {
+		content = content[:max(0, limit)]
+	}
+	contentCount := len(content)
+	if len(actions) > 0 {
+		content = append(content, "")
 	}
 
-	box := styleBox.Render(lipgloss.JoinVertical(lipgloss.Left, content...))
+	box := styleBox.Width(inner + 4).Render(lipgloss.JoinVertical(lipgloss.Left, content...))
 	boxW, boxH := lipgloss.Width(box), lipgloss.Height(box)
 
 	originX := (m.width - boxW) / 2
@@ -750,17 +835,21 @@ func (m *Model) modal(title string, lines []string, hitLines []int, hover bool) 
 	contentTop := originY + 2 + titleLines
 	var rows []int
 	for _, h := range hitLines {
-		if h >= 0 && h+titleLines < len(content) {
+		if h >= 0 && h+titleLines < contentCount {
 			rows = append(rows, contentTop+h)
 		}
 	}
 	if hover {
-		for i := range content {
-			if m.hovering(contentTop+i, 0, m.width) {
+		for i := 0; i < contentCount; i++ {
+			if m.hovering(originY+2+i, originX+3, originX+3+inner) {
 				content[i] = styleHover.Render(padRight(content[i], inner))
 			}
 		}
 	}
+	if len(actions) > 0 {
+		content[contentCount] = m.buttonLine(actions, originX+3, originY+2+contentCount, inner)
+	}
+	box = styleBox.Width(inner + 4).Render(lipgloss.JoinVertical(lipgloss.Left, content...))
 
 	out := make([]string, 0, m.height)
 	for i := 0; i < originY; i++ {

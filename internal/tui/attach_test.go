@@ -31,7 +31,9 @@ func liveModel(t *testing.T) (*tui.Model, *tmux.Client) {
 		t.Fatalf("Ensure: %v", err)
 	}
 
-	m := tui.New(config.Default(), sample(), config.DefaultPaths(), session.Problems{}, client)
+	paths := config.DefaultPaths()
+	paths.Config = t.TempDir()
+	m := tui.New(config.Default(), sample(), paths, session.Problems{}, client)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	return updated.(*tui.Model), client
 }

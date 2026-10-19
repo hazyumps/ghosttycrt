@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strconv"
 	"strings"
@@ -36,9 +37,9 @@ func idleBlock() ([]string, int) {
 		"",
 		"no connections open yet",
 		"",
-		"choose one in the tree, then press enter",
+		"click a session in the tree to connect",
 		"",
-		"Ctrl-b t brings the keyboard back to the tree",
+		"F2 or click Sessions below to return to the tree",
 	)
 
 	width := 0
@@ -57,13 +58,9 @@ func idleBlock() ([]string, int) {
 // contentTemplate is the content pane's program. @WORD@ placeholders stand in
 // for values, rather than Printf, so the shell's own % signs need no escaping.
 //
-// The idle screen redraws on a timer rather than once. It is drawn into a pane
-// that is still settling: the split happens before the layout pins the tree to
-// its width, so a single draw can land at the wrong size and stay wrong. Since
-// the draw clears first, repeating it costs nothing and cannot pile up.
+// Poll for connections and resize, but emit nothing while the idle view is
+// unchanged. Repeated clears visibly flash in terminal emulators.
 const contentTemplate = `draw() {
-  sz=$(stty size 2>/dev/null | tr -d '\r')
-  [ -n "$sz" ] || sz="24 80"
   rows=${sz%% *}
   cols=${sz##* }
   printf '\033[2J\033[H'
@@ -80,16 +77,25 @@ const contentTemplate = `draw() {
 @BLOCK@
 GCRT_ART
   else
-    printf '\n  no connections open\n\n  pick one in the tree\n'
+    printf '\n  no connections open\n\n  F2: sessions\n'
   fi
 }
 
+last_size=
 while :; do
   if @BIN@ -L @SOCK@ has-session -t @SESS@ 2>/dev/null; then
+    printf '\033[?25h'
     @BIN@ -L @SOCK@ attach -t @SESS@
+    last_size=
     sleep 0.3
   else
-    draw
+    sz=$(stty size 2>/dev/null | tr -d '\r')
+    [ -n "$sz" ] || sz="24 80"
+    if [ "$sz" != "$last_size" ]; then
+      frame=$(draw)
+      printf '\033[?25l%s' "$frame"
+      last_size=$sz
+    fi
     sleep 0.5
   fi
 done
@@ -165,12 +171,7 @@ func (c *Client) configureTabServer() error {
 	// The commands are passed bare, not wrapped in braces. Braces inside a
 	// single argument make tmux store the command as a *string*, and choosing
 	// the item then fails to parse it — "syntax error".
-	menu := []string{"bind-key", "-T", "root", "MouseDown3Status",
-		"display-menu", "-T", "#[align=centre]#{window_name}", "-t", "=", "-x", "W", "-y", "W",
-		"Switch to it", "s", "select-window",
-		"Kill", "X", "kill-window",
-	}
-	if _, err := tabs.run(menu...); err != nil {
+	if err := tabs.configureConnectionMenu(); err != nil {
 		return err
 	}
 	// Leave the left/right status zones to the same menu rather than tmux's
@@ -196,12 +197,33 @@ func (c *Client) ensureContentPane() error {
 		}
 		return err
 	}
-	if len(parseLines(out)) > 1 {
-		return nil
+	panes := parseLines(out)
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(c.contentScript())))
+	if len(panes) > 1 {
+		id, err := c.contentPane()
+		if err != nil {
+			return err
+		}
+		current, err := c.run("show-options", "-pqv", "-t", id, "@gcrt_content_hash")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(current) == digest {
+			return nil
+		}
+		// Only the display wrapper is replaced. Connections live on the
+		// separate tab server and survive its client detaching.
+		if err := c.runQuiet("respawn-pane", "-k", "-t", id, "sh", "-c", c.contentScript()); err != nil {
+			return err
+		}
+		return c.runQuiet("set-option", "-p", "-t", id, "@gcrt_content_hash", digest)
 	}
-	_, err = c.run("split-window", "-h", "-t", WorkspaceSession+":"+TreeWindow,
+	id, err := c.run("split-window", "-h", "-P", "-F", "#{pane_id}", "-t", WorkspaceSession+":"+TreeWindow,
 		"sh", "-c", c.contentScript())
-	return err
+	if err != nil {
+		return err
+	}
+	return c.runQuiet("set-option", "-p", "-t", strings.TrimSpace(id), "@gcrt_content_hash", digest)
 }
 
 // contentPane is the pane beside the tree, i.e. the one that is not the tree's.

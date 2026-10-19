@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eu
+
+# LaunchServices does not run the user's login shell. Resolve dependencies
+# explicitly, and never inherit another terminal's tmux nesting markers.
+export PATH="$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+unset TMUX TMUX_PANE GCRT_WORKSPACE
+cd "$HOME"
+exec gcrt

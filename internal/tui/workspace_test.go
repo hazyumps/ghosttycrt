@@ -56,7 +56,12 @@ func workspaceLayout(t *testing.T, layout string, width int, sshBody string) (*t
 	cfg.General.WorkspaceTreeWidth = 30
 	cfg.Transports.SSH.Binary = script
 
-	m := tui.New(cfg, sample(), config.DefaultPaths(), session.Problems{}, client)
+	paths := config.DefaultPaths()
+	paths.Config = t.TempDir()
+	if err := session.SaveFile(paths.SessionsFile(), sample().Session); err != nil {
+		t.Fatal(err)
+	}
+	m := tui.New(cfg, sample(), paths, session.Problems{}, client)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: 30})
 	m = updated.(*tui.Model)
 	m.EnableWorkspace("%0")
@@ -222,6 +227,48 @@ func TestWorkspaceQuitDetachesInsteadOfQuitting(t *testing.T) {
 	_, cmd := press(t, m, "q")
 	if cmd != nil {
 		t.Fatal("q should detach the workspace, not quit gcrt")
+	}
+}
+
+func TestWorkspaceCtrlCCancelsWithoutQuitting(t *testing.T) {
+	for _, state := range []string{"normal", "filter", "menu", "confirm", "help", "form"} {
+		t.Run(state, func(t *testing.T) {
+			m, client := workspaceModel(t, 100, "sleep 60")
+			m = selectK3s(t, m)
+			m = mustOpen(t, m)
+			before, _ := paneForSlug(t, client, "k3s-01")
+			if err := client.FocusTree(); err != nil {
+				t.Fatal(err)
+			}
+			m, _ = press(t, m, "r")
+			switch state {
+			case "filter":
+				m, _ = press(t, m, "/k3s")
+			case "menu":
+				m, _ = press(t, m, "d")
+			case "confirm":
+				m, _ = press(t, m, "d")
+				m, _ = clickAt(t, m, 8, rowOf(t, m, "Kill"))
+			case "help":
+				m, _ = press(t, m, "?")
+			case "form":
+				m, _ = press(t, m, "n")
+			}
+			updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+			m = updated.(*tui.Model)
+			if cmd != nil {
+				t.Fatal("Ctrl-C must not return a quit command")
+			}
+			if !strings.Contains(m.View(), "cancelled") || !strings.Contains(m.View(), "k3s-01") {
+				t.Fatalf("Ctrl-C did not return to the tree:\n%s", m.View())
+			}
+			if after, ok := paneForSlug(t, client, "k3s-01"); !ok || after.ID != before.ID {
+				t.Fatal("Ctrl-C stopped the connection")
+			}
+			if out, err := exec.Command("tmux", "-L", client.Socket, "display-message", "-p", "-t", "%0", "#{window_zoomed_flag}").Output(); err != nil || strings.TrimSpace(string(out)) != "0" {
+				t.Fatalf("Ctrl-C left the form zoomed: %v: %s", err, out)
+			}
+		})
 	}
 }
 

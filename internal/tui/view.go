@@ -455,6 +455,9 @@ func (m *Model) viewForm() string {
 			if spec.kind == fieldGroup {
 				value = "(root)"
 			}
+			if spec.key == "terminal" {
+				value = "(inherit)"
+			}
 			vstyle = styleDim
 		}
 		if focused && f.editing {

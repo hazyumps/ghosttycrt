@@ -14,7 +14,7 @@ func TestWriteRoundTripsThroughLoad(t *testing.T) {
 			ID: "id-1", Name: "core-sw-01", Slug: "core-sw-01", Transport: TransportSSH,
 			Group: "network/switches", Tags: []string{"cisco", "prod"}, Pinned: true,
 			Description: "Cisco C9300, rack A",
-			SSH:         &SSHConfig{Host: "10.1.3.11", Port: 2222, User: "admin", Jump: "bastion"},
+			SSH:         &SSHConfig{Host: "10.1.3.11", Port: 2222, User: "admin", Jump: "bastion", Terminal: "xterm"},
 			Logging:     &LoggingConfig{Enabled: true},
 			Credentials: &CredentialsConfig{Provider: "infisical", Ref: "CORE-SW-01-PASS"},
 		},
@@ -49,7 +49,7 @@ func TestWriteRoundTripsThroughLoad(t *testing.T) {
 	if got.Name != in[0].Name || got.Group != in[0].Group || !got.Pinned || got.Description != in[0].Description {
 		t.Fatalf("top-level fields did not round trip: %+v", got)
 	}
-	if got.SSH == nil || got.SSH.Host != "10.1.3.11" || got.SSH.Port != 2222 || got.SSH.Jump != "bastion" {
+	if got.SSH == nil || got.SSH.Host != "10.1.3.11" || got.SSH.Port != 2222 || got.SSH.Jump != "bastion" || got.SSH.Terminal != "xterm" {
 		t.Fatalf("ssh block did not round trip: %+v", got.SSH)
 	}
 	if got.Credentials == nil || got.Credentials.Ref != "CORE-SW-01-PASS" {
@@ -83,7 +83,7 @@ func TestWriteOmitsEmptyOptionalFields(t *testing.T) {
 		}
 	}
 
-	for _, unwanted := range []string{"group", "tags", "description", "port", "user", "jump", "identity"} {
+	for _, unwanted := range []string{"group", "tags", "description", "port", "user", "jump", "identity", "terminal"} {
 		if keys[unwanted] {
 			t.Errorf("output should not set %q when it is unset:\n%s", unwanted, buf.String())
 		}

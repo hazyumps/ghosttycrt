@@ -58,7 +58,7 @@ stopped tree; they leave a healthy tree running, including unsaved forms.
 
 ## Screenshots
 
-Current terminal UI, **v0.2.8**. The demo uses invented hosts and simulated SSH
+Current terminal UI, **v0.2.9**. The demo uses invented hosts and simulated SSH
 output; the tree, tabs, menus and dialogs are the running application.
 
 The sidebar keeps the session tree beside two open connection tabs:
@@ -129,6 +129,15 @@ movement, cancellation, and closing only the chosen session.
 
 `gcrt` reads `~/.config/ghosttycrt/{config.toml,sessions.toml}`. Point it
 elsewhere while trying it out with `-config-dir examples`.
+
+If a network appliance reports an unknown terminal such as `tmux-256color`,
+right-click its session, choose **Edit**, then click **terminal** to select
+`xterm`. Save, then reconnect that session. Other sessions keep their existing
+terminal settings. The field cycles through common terminal types; you can also
+type a custom terminfo name. Empty means inherit tmux's default.
+
+The saved setting is `terminal = "xterm"` under that session's `[session.ssh]`
+block. It takes effect on the next connection, including reconnects.
 
 `gcrt import securecrt` converts an existing SecureCRT configuration — its
 folder tree becomes the group tree, and stored passwords are never imported

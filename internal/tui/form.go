@@ -68,6 +68,7 @@ var (
 	transportChoices = []string{"ssh", "serial", "telnet", "local"}
 	parityChoices    = []string{"none", "even", "odd"}
 	flowChoices      = []string{"none", "software", "hardware"}
+	terminalChoices  = []string{"", "xterm", "xterm-256color", "vt100", "screen-256color", "tmux-256color"}
 	onOff            = []string{"on", "off"}
 )
 
@@ -142,6 +143,7 @@ func (f *form) load(s *session.Session) {
 		f.values["user"] = c.User
 		f.values["jump"] = c.Jump
 		f.values["identity"] = c.Identity
+		f.values["terminal"] = c.Terminal
 	}
 	if c := s.Serial; c != nil {
 		f.values["device"] = c.Device
@@ -212,6 +214,7 @@ func (f *form) rebuild() {
 			formSpec{key: "user", label: "user", kind: fieldText},
 			formSpec{key: "jump", label: "jump", kind: fieldText},
 			formSpec{key: "identity", label: "identity", kind: fieldText},
+			formSpec{key: "terminal", label: "terminal", kind: fieldCycle, choices: terminalChoices},
 		)
 	}
 
@@ -505,6 +508,7 @@ func (f *form) toSession(taken func(string) bool) *session.Session {
 			User:     strings.TrimSpace(f.value("user")),
 			Jump:     strings.TrimSpace(f.value("jump")),
 			Identity: strings.TrimSpace(f.value("identity")),
+			Terminal: strings.TrimSpace(f.value("terminal")),
 		}
 	case session.TransportSerial:
 		s.Serial = &session.SerialConfig{

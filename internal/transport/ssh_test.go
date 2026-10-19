@@ -86,6 +86,28 @@ func TestSSHArgvWithoutHostFails(t *testing.T) {
 	}
 }
 
+func TestSSHTerminalOverridesOnlyTheConnectionEnvironment(t *testing.T) {
+	s := sshSession()
+	s.SSH.Terminal = "xterm"
+	tr, _ := transport.For(s, config.Default())
+	argv, env, err := tr.Argv(s, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(env) != 0 || len(argv) < 3 || argv[0] != "env" || argv[1] != "TERM=xterm" || argv[2] != "ssh" {
+		t.Fatalf("TERM must be applied after tmux starts the process: argv=%v env=%v", argv, env)
+	}
+	if strings.Contains(strings.Join(argv, " "), "SetEnv") {
+		t.Fatal("TERM must be set locally before SSH requests its PTY")
+	}
+	for _, invalid := range []string{"xterm\n", "xterm;echo bad", "TERM=xterm", "-xterm", "xterm\x00"} {
+		s.SSH.Terminal = invalid
+		if _, _, err := tr.Argv(s, ""); err == nil {
+			t.Errorf("accepted invalid terminal %q", invalid)
+		}
+	}
+}
+
 func TestExtraArgsAreAppended(t *testing.T) {
 	cfg := config.Default()
 	cfg.Transports.SSH.ExtraArgs = []string{"-o", "ServerAliveInterval=30"}

@@ -37,6 +37,11 @@ func TestValidateCatches(t *testing.T) {
 			session: Session{ID: "1", Name: "a", Slug: "Bad Slug", Transport: TransportSSH, SSH: &SSHConfig{Host: "h"}},
 		},
 		{
+			name: "invalid terminal",
+			session: Session{ID: "bad-terminal", Name: "terminal", Slug: "terminal", Transport: TransportSSH,
+				SSH: &SSHConfig{Host: "h", Terminal: "xterm\n"}},
+		},
+		{
 			name:    "duplicate slug",
 			session: Session{ID: "2", Name: "b", Slug: "a", Transport: TransportSSH, SSH: &SSHConfig{Host: "h"}},
 		},

@@ -50,6 +50,7 @@ type SSHConfig struct {
 	User     string `toml:"user"`
 	Jump     string `toml:"jump"`
 	Identity string `toml:"identity"`
+	Terminal string `toml:"terminal"`
 }
 
 type SerialConfig struct {
@@ -92,9 +93,15 @@ type OnConnectStep struct {
 }
 
 var (
-	slugPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	allowedBauds = []int{300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400}
+	slugPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	terminalPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9+_.-]{0,127}$`)
+	allowedBauds    = []int{300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400}
 )
+
+// ValidTerminal accepts a terminfo name, or empty to inherit the pane's TERM.
+func ValidTerminal(value string) bool {
+	return value == "" || terminalPattern.MatchString(value)
+}
 
 // Slugify derives a tmux-safe slug from a display name.
 func Slugify(name string) string {

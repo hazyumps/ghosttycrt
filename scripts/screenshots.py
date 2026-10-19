@@ -177,7 +177,7 @@ try:
     click("core-sw-01", button=2)
     shot("menu", ["choose an action", "Reconnect", "Edit", "Duplicate", "[ Cancel ]"])
     click("Edit")
-    shot("form", ["edit core-sw-01", "192.0.2.11", "[ Save ]", "[ Cancel ]"])
+    shot("form", ["edit core-sw-01", "192.0.2.11", "terminal", "(inherit)", "[ Save ]", "[ Cancel ]"])
     click("[ Cancel ]")
 
     click("Quick")

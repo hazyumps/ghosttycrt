@@ -49,12 +49,13 @@ ssh [-p <port>] [-i <identity>] [-J <jump>] [-o SendEnv=…] <user>@<host>
 - `jump` → `-J`. (Session-level `jump` wins over `~/.ssh/config`'s
   `ProxyJump`; the config file is a suggestion, the session record is the
   truth.)
-- `TERM`: set `SetEnv TERM=xterm-256color` is **not** added by default. Ghostty's
-  `xterm-ghostty` works on hosts with the terminfo entry; for gear that lacks it,
-  set an `env` map on the session (`03-data-model.md`) with
-  `TERM=xterm-256color`. Wrong-`TERM` on old network gear is the single most
-  common cause of "Ghostty broke my switch CLI". Consider a global
-  `transports.ssh.legacy_term = true` toggle at M2.
+- `terminal` under `[session.ssh]` selects the terminal type sent in SSH's PTY
+  request. Empty inherits tmux's TERM. For appliances that lack `tmux-256color`,
+  choose `xterm` in the session editor; `xterm-256color` and `vt100` are also
+  available, along with typed custom names. GCRT runs `env TERM=<name> ssh ...`
+  as separate argv elements after tmux starts the pane: tmux can overwrite TERM
+  passed through `new-session -e`. This applies on connect and reconnect without
+  changing other sessions, tmux's global default, or remote configuration.
 - `extra_args` from `config.toml` are appended, so `ServerAliveInterval` and
   friends are set in one place.
 - Secret handling: only when the session authenticates by password (see

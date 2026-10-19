@@ -62,7 +62,7 @@ to M2, which is where atomic `sessions.toml` writes live.
 - [x] form view: new/edit/duplicate/delete/pin — **landed 2026-09-16**
 - [x] atomic `sessions.toml` writes — `session.SaveFile`, temp file then rename
 - [ ] `~/.ssh/config` importer with preview diff
-- [ ] legacy `TERM=xterm-256color` toggle for old gear
+- [x] per-session terminal selector for old gear (`xterm`, `xterm-256color`, `vt100`, custom)
 
 Done when: a USB console to a switch is two keystrokes, and `~/.ssh/config`
 imports without retyping.

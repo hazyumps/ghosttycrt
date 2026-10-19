@@ -28,6 +28,9 @@ func (t SSH) Validate(s *session.Session) error {
 	if s.SSH.Host == "" {
 		return errors.New("ssh: host is required")
 	}
+	if !session.ValidTerminal(s.SSH.Terminal) {
+		return errors.New("ssh: terminal must be a terminal name such as xterm, or empty to inherit")
+	}
 	return nil
 }
 
@@ -60,5 +63,11 @@ func (t SSH) Argv(s *session.Session, secret string) ([]string, []string, error)
 	}
 	argv = append(argv, target)
 
+	if sc.Terminal != "" {
+		// tmux can overwrite TERM supplied through new-session -e. Apply it
+		// after tmux starts the process so SSH's PTY request uses this value.
+		// These are separate argv elements; no shell interpolation is involved.
+		argv = append([]string{"env", "TERM=" + sc.Terminal}, argv...)
+	}
 	return argv, nil, nil
 }

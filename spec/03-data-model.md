@@ -86,6 +86,7 @@ description   = "Cisco C9300, rack A"
   user        = "admin"
   jump        = "bastion"           # optional ProxyJump target
   identity    = "~/.ssh/id_ed25519" # optional; empty = agent/default
+  terminal    = "xterm"             # optional; empty = inherit tmux's TERM
 
   [session.logging]
   enabled     = true                # overrides logging.enabled_by_default

@@ -68,6 +68,28 @@ func TestMouseEditorSaveCommitsPendingTextAndCancelDoesNot(t *testing.T) {
 	}
 }
 
+func TestTerminalChoiceCanBeClickedSavedAndInheritedAgain(t *testing.T) {
+	m, path := crudModel(t)
+	m, _ = press(t, m, "e")
+	m, _ = clickText(t, m, "terminal") // inherit -> xterm
+	m, _ = clickText(t, m, "[ Save ]")
+	s, _ := byName(reload(t, path), "core-sw-01")
+	if s.SSH.Terminal != "xterm" {
+		t.Fatalf("mouse choice was not saved: %q", s.SSH.Terminal)
+	}
+	m, _ = press(t, m, "e")
+	if !strings.Contains(m.View(), "xterm") {
+		t.Fatal("reopening the editor lost the terminal choice")
+	}
+	m, _ = clickText(t, m, "terminal") // next choice; focus terminal
+	m = pressKey(t, m, tea.KeyCtrlD)   // clear override
+	m, _ = clickText(t, m, "[ Save ]")
+	s, _ = byName(reload(t, path), "core-sw-01")
+	if s.SSH.Terminal != "" {
+		t.Fatal("clearing terminal did not restore inheritance")
+	}
+}
+
 func TestMouseCanLeaveQuickConnectHelpAndMenus(t *testing.T) {
 	m, path := crudModel(t)
 	before, _ := os.ReadFile(path)

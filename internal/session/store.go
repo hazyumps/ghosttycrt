@@ -137,6 +137,9 @@ func validateTransport(s *Session, where string) []error {
 		if s.SSH.Port < 0 || s.SSH.Port > 65535 {
 			errs = append(errs, fmt.Errorf("%s: ssh.port %d is out of range", where, s.SSH.Port))
 		}
+		if !ValidTerminal(s.SSH.Terminal) {
+			errs = append(errs, fmt.Errorf("%s: ssh.terminal must be a terminal name such as xterm, or empty to inherit", where))
+		}
 	case TransportSerial:
 		if s.Serial == nil {
 			return append(errs, fmt.Errorf("%s: transport serial requires [session.serial]", where))
